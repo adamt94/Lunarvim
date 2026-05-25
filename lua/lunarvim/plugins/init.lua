@@ -71,24 +71,28 @@ local specs = {
     },
   },
 
-  -- Keymap hints
+  -- Keymap hints (loaded early so group labels appear immediately)
   {
     "folke/which-key.nvim",
     event = "VeryLazy",
     opts = {
       preset = "modern",
+      delay = 300,
     },
   },
 
-  -- Terminal panels (foundation for AI workflow)
+  -- Comment toggling: gcc (line), gc (motion/visual)
+  {
+    "numToStr/Comment.nvim",
+    event = { "BufReadPost", "BufNewFile" },
+    opts = {},
+  },
+
+  -- Terminal panels (foundation for AI workflow); keys live in keymaps/init.lua
   {
     "akinsho/toggleterm.nvim",
     version = "*",
-    keys = {
-      { "<leader>tt", "<cmd>ToggleTerm direction=horizontal<cr>", desc = "Terminal (horizontal)" },
-      { "<leader>tf", "<cmd>ToggleTerm direction=float<cr>",      desc = "Terminal (float)" },
-      { "<leader>tv", "<cmd>ToggleTerm direction=vertical<cr>",   desc = "Terminal (vertical)" },
-    },
+    cmd = "ToggleTerm",
     opts = {
       size = function(term)
         if term.direction == "horizontal" then return 15
