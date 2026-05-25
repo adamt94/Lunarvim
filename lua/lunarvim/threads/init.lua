@@ -89,12 +89,24 @@ function M.delete(id)
   write(updated)
 end
 
+-- Returns a short default name: "foldername #N" where N is thread count in project.
+local function default_name(project)
+  project = project or vim.fn.getcwd()
+  local all   = read()
+  local count = 0
+  for _, t in ipairs(all) do
+    if t.project == project then count = count + 1 end
+  end
+  local folder = vim.fn.fnamemodify(project, ":t")
+  return folder .. " #" .. (count + 1)
+end
+
 -- project is optional override. callback receives the created thread object.
 function M.launch(ai_tool, callback, project)
   local tool = M.AI_TOOLS[ai_tool]
   if not tool then return end
-  local default = tool.label .. " — " .. os.date("%b %d, %H:%M")
-  vim.ui.input({ prompt = "Thread name: ", default = default }, function(name)
+  project = project or vim.fn.getcwd()
+  vim.ui.input({ prompt = "Thread name: ", default = default_name(project) }, function(name)
     if not name or name == "" then return end
     local thread = M.new(name, ai_tool, project)
     require("lunarvim.ui.sidebar").open_thread(thread)
@@ -107,8 +119,8 @@ end
 function M.launch_now(ai_tool, project)
   local tool = M.AI_TOOLS[ai_tool]
   if not tool then return end
-  local name   = tool.label .. " — " .. os.date("%b %d, %H:%M")
-  local thread = M.new(name, ai_tool, project)
+  project      = project or vim.fn.getcwd()
+  local thread = M.new(default_name(project), ai_tool, project)
   vim.schedule(function()
     require("lunarvim.ui.sidebar").open_thread(thread)
   end)

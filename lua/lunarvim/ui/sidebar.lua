@@ -8,6 +8,8 @@ local state = {
   line_map  = {},   -- lnr -> { type = "thread"|"project"|"empty", data = ... }
   active_id = nil,
   term_bufs = {},   -- thread_id -> terminal bufnr (in-memory, resets on restart)
+  term_jobs = {},   -- thread_id -> job_id (for live/dead status)
+  collapsed = {},   -- project_path -> bool
 }
 
 -- ── Highlights ────────────────────────────────────────────────────────────────
@@ -18,6 +20,7 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "LvimThreadsHeader",  { link = "Title",        default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsProject", { link = "Directory",    default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsActive",  { link = "DiagnosticOk", default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsLive",    { link = "DiagnosticOk", default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsTime",    { link = "Comment",      default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsSep",     { link = "NonText",      default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsHint",    { link = "Comment",      default = true })
@@ -88,32 +91,47 @@ local function render()
   else
     for _, proj in ipairs(projects) do
       push("")
-      local short = vim.fn.fnamemodify(proj.path, ":~")
-      if #short > width - 2 then short = "…" .. short:sub(-(width - 3)) end
-      local header_lnr     = push(" " .. short, "LvimThreadsProject")
+      local collapsed   = state.collapsed[proj.path]
+      local toggle_icon = collapsed and "▶" or "▼"
+      local count_str   = " (" .. #proj.threads .. ")"
+      local short       = vim.fn.fnamemodify(proj.path, ":t")  -- just folder name
+      local max_name    = width - 4 - #count_str               -- " ▼ " prefix + count suffix
+      if #short > max_name then short = short:sub(1, max_name - 1) .. "…" end
+
+      local header_line = " " .. toggle_icon .. " " .. short .. count_str
+      local header_lnr  = push(header_line, "LvimThreadsProject")
       line_map[header_lnr] = { type = "project", data = proj }
 
-      if #proj.threads == 0 then
-        local lnr     = push("  no threads — n to start one", "LvimThreadsMuted")
-        line_map[lnr] = { type = "empty", data = proj }
-      else
-        for _, t in ipairs(proj.threads) do
-          local tool   = threads_mod.AI_TOOLS[t.ai_tool] or { icon = "?" }
-          local active = (state.active_id == t.id) and "●" or " "
-          local ts     = time_ago(t.last_accessed)
+      if not collapsed then
+        if #proj.threads == 0 then
+          local lnr     = push("   no threads — press n", "LvimThreadsMuted")
+          line_map[lnr] = { type = "empty", data = proj }
+        else
+          for _, t in ipairs(proj.threads) do
+            local tool   = threads_mod.AI_TOOLS[t.ai_tool] or { icon = "?" }
+            local active = (state.active_id == t.id) and "●" or " "
+            local ts     = time_ago(t.last_accessed)
 
-          local name_budget = width - 8 - #ts
-          local name        = t.name
-          if #name > name_budget then name = name:sub(1, name_budget - 1) .. "…" end
-          local pad = name_budget - #name
+            local job_id = state.term_jobs[t.id]
+            local alive  = job_id and vim.fn.jobwait({ job_id }, 0)[1] == -1
+            local status = alive and "◆" or "·"
 
-          local line    = string.format(" %s %s %s%s %s",
-            active, tool.icon, name, string.rep(" ", pad), ts)
-          local lnr     = push(line)
-          line_map[lnr] = { type = "thread", data = t }
+            -- format: " ● ◆ icon name…pad ts"
+            -- fixed overhead: 1(sp)+1(active)+1(sp)+1(status)+1(sp)+2(icon)+1(sp)+1(sp)+1(ts_sp) = ~9
+            local name_budget = width - 10 - #ts
+            local name        = t.name
+            if #name > name_budget then name = name:sub(1, name_budget - 1) .. "…" end
+            local pad = math.max(0, name_budget - #name)
 
-          if active == "●" then hls[#hls + 1] = { lnr, 1, 2, "LvimThreadsActive" } end
-          hls[#hls + 1] = { lnr, #line - #ts, -1, "LvimThreadsTime" }
+            local line    = string.format(" %s %s %s %s%s %s",
+              active, status, tool.icon, name, string.rep(" ", pad), ts)
+            local lnr     = push(line)
+            line_map[lnr] = { type = "thread", data = t }
+
+            if active == "●" then hls[#hls + 1] = { lnr, 1, 2, "LvimThreadsActive" } end
+            if alive         then hls[#hls + 1] = { lnr, 3, 4, "LvimThreadsLive"   } end
+            hls[#hls + 1] = { lnr, #line - #ts, -1, "LvimThreadsTime" }
+          end
         end
       end
     end
@@ -121,7 +139,7 @@ local function render()
 
   push("")
   push(SEP, "LvimThreadsSep")
-  push(" p proj · n new · <CR> open · d del · dd force-del", "LvimThreadsHint")
+  push(" n new · <CR> open/collapse · r rename · d del · dd force", "LvimThreadsHint")
   push("")
 
   return lines, line_map, hls
@@ -204,9 +222,10 @@ local function create_term(thread, win)
   end
 
   pcall(vim.api.nvim_buf_set_name, buf, thread.name)
-  vim.bo[buf].buflisted = false
+  vim.bo[buf].buflisted    = false
+  state.term_jobs[thread.id] = job_id
 
-  -- In normal mode (not in input), <C-f> scrolls to the top of terminal output
+  -- In normal mode, <C-f> scrolls to the top of terminal output
   vim.keymap.set("n", "<C-f>", "gg", { buffer = buf, silent = true, desc = "Go to top of terminal output" })
 
   return buf
@@ -311,6 +330,7 @@ local function do_delete(e)
       vim.api.nvim_buf_delete(bufnr, { force = true })
     end
     state.term_bufs[t.id] = nil
+    state.term_jobs[t.id] = nil
     refresh()
   elseif e.type == "project" or e.type == "empty" then
     require("lunarvim.projects").remove(e.data.path)
@@ -357,8 +377,17 @@ local function set_keymaps(buf)
     vim.keymap.set("n", lhs, fn,
       vim.tbl_extend("force", { buffer = buf, silent = true, nowait = true, desc = desc }, extra or {}))
   end
-  map("<CR>",  M.action_open,         "Open thread")
-  map("o",     M.action_open,         "Open thread")
+  map("<CR>", function()
+    local e = entry_at_cursor()
+    if not e then return end
+    if e.type == "thread" then
+      M.open_thread(e.data)
+    else
+      state.collapsed[e.data.path] = not state.collapsed[e.data.path]
+      refresh()
+    end
+  end, "Open thread / toggle project collapse")
+  map("o", M.action_open, "Open thread")
   map("n",     M.action_new,          "New thread")
   map("p",     M.action_add_project,  "Add project")
   map("r",     M.action_rename,       "Rename thread")
