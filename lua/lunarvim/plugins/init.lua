@@ -1,3 +1,121 @@
-return {
-  -- Plugin specs will be added here as the project evolves.
+local M = {}
+
+local specs = {
+  -- Colorscheme
+  {
+    "catppuccin/nvim",
+    name = "catppuccin",
+    priority = 1000,
+    opts = { flavour = "mocha" },
+  },
+
+  -- Syntax / parsing
+  {
+    "nvim-treesitter/nvim-treesitter",
+    build = ":TSUpdate",
+    event = { "BufReadPost", "BufNewFile" },
+    opts = {
+      ensure_installed = { "lua", "python", "javascript", "typescript", "bash", "json", "markdown" },
+      highlight = { enable = true },
+      indent = { enable = true },
+    },
+    config = function(_, opts)
+      require("nvim-treesitter.configs").setup(opts)
+    end,
+  },
+
+  -- Fuzzy finder
+  { "nvim-lua/plenary.nvim", lazy = true },
+  {
+    "nvim-telescope/telescope.nvim",
+    cmd = "Telescope",
+    dependencies = { "nvim-lua/plenary.nvim" },
+    opts = {
+      defaults = {
+        prompt_prefix = "  ",
+        selection_caret = " ",
+      },
+    },
+  },
+
+  -- File explorer
+  {
+    "nvim-neo-tree/neo-tree.nvim",
+    branch = "v3.x",
+    cmd = "Neotree",
+    dependencies = {
+      "nvim-lua/plenary.nvim",
+      "nvim-tree/nvim-web-devicons",
+      "MunifTanjim/nui.nvim",
+    },
+    opts = {
+      filesystem = {
+        filtered_items = { hide_dotfiles = false },
+        follow_current_file = { enabled = true },
+      },
+      window = { width = 30 },
+    },
+  },
+
+  -- Statusline
+  {
+    "nvim-lualine/lualine.nvim",
+    event = "VeryLazy",
+    dependencies = { "nvim-tree/nvim-web-devicons" },
+    opts = {
+      options = {
+        theme = "catppuccin",
+        component_separators = "|",
+        section_separators = { left = "", right = "" },
+      },
+    },
+  },
+
+  -- Keymap hints
+  {
+    "folke/which-key.nvim",
+    event = "VeryLazy",
+    opts = {
+      preset = "modern",
+    },
+  },
+
+  -- Terminal panels (foundation for AI workflow)
+  {
+    "akinsho/toggleterm.nvim",
+    version = "*",
+    keys = {
+      { "<leader>tt", "<cmd>ToggleTerm direction=horizontal<cr>", desc = "Terminal (horizontal)" },
+      { "<leader>tf", "<cmd>ToggleTerm direction=float<cr>",      desc = "Terminal (float)" },
+      { "<leader>tv", "<cmd>ToggleTerm direction=vertical<cr>",   desc = "Terminal (vertical)" },
+    },
+    opts = {
+      size = function(term)
+        if term.direction == "horizontal" then return 15
+        elseif term.direction == "vertical" then return math.floor(vim.o.columns * 0.4)
+        end
+      end,
+      float_opts = { border = "curved" },
+      shade_terminals = false,
+    },
+  },
 }
+
+function M.load()
+  require("lazy").setup(specs, {
+    defaults = { lazy = true },
+    install = { colorscheme = { "catppuccin" } },
+    performance = {
+      rtp = {
+        disabled_plugins = {
+          "gzip", "matchit", "matchparen", "netrwPlugin",
+          "tarPlugin", "tohtml", "tutor", "zipPlugin",
+        },
+      },
+    },
+  })
+
+  vim.cmd.colorscheme("catppuccin")
+end
+
+return M
