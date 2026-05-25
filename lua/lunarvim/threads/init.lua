@@ -21,6 +21,14 @@ local function write(threads)
   vim.fn.writefile({ vim.json.encode(threads) }, threads_path)
 end
 
+function M.get(id)
+  if not id then return nil end
+  for _, t in ipairs(read()) do
+    if t.id == id then return t end
+  end
+  return nil
+end
+
 function M.recent(n)
   local all = read()
   local result = {}

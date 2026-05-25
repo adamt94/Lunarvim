@@ -68,15 +68,9 @@ local specs = {
   -- Statusline
   {
     "nvim-lualine/lualine.nvim",
-    event = "VeryLazy",
+    event        = "VeryLazy",
     dependencies = { "nvim-tree/nvim-web-devicons" },
-    opts = {
-      options = {
-        theme = "catppuccin",
-        component_separators = "|",
-        section_separators = { left = "", right = "" },
-      },
-    },
+    opts         = function() return require("lunarvim.ui.statusline").lualine_opts() end,
   },
 
   -- Keymap hints (loaded early so group labels appear immediately)

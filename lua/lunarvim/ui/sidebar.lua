@@ -534,4 +534,13 @@ function M.set_active(id)
   if M.is_open() then refresh() end
 end
 
+-- Returns lightweight info about the active thread for status bar use.
+function M.get_active_info()
+  if not state.active_id then return nil end
+  return {
+    id     = state.active_id,
+    job_id = state.term_jobs[state.active_id],
+  }
+end
+
 return M
