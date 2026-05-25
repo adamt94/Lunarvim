@@ -2,20 +2,27 @@ local M = {}
 local map = require("lunarvim.utils").map
 
 -- Register which-key group labels so the popup shows clean category names.
+-- Deferred to User VeryLazy so which-key is guaranteed to be loaded first.
 local function register_groups()
-  local ok, wk = pcall(require, "which-key")
-  if not ok then return end
-  wk.add({
-    { "<leader>b",  group = "Buffers" },
-    { "<leader>e",  group = "Explorer" },
-    { "<leader>f",  group = "Find" },
-    { "<leader>g",  group = "Git" },
-    { "<leader>l",  group = "LSP" },
-    { "<leader>t",  group = "Terminal" },
-    { "<leader>a",  group = "AI" },
-    { "<leader>u",  group = "UI" },
-    { "<leader>w",  group = "Windows" },
-    { "<leader>q",  group = "Quit" },
+  vim.api.nvim_create_autocmd("User", {
+    pattern = "VeryLazy",
+    once = true,
+    callback = function()
+      local ok, wk = pcall(require, "which-key")
+      if not ok then return end
+      wk.add({
+        { "<leader>b", group = "Buffers" },
+        { "<leader>e", group = "Explorer" },
+        { "<leader>f", group = "Find" },
+        { "<leader>g", group = "Git" },
+        { "<leader>l", group = "LSP" },
+        { "<leader>t", group = "Terminal" },
+        { "<leader>a", group = "AI" },
+        { "<leader>u", group = "UI" },
+        { "<leader>w", group = "Windows" },
+        { "<leader>q", group = "Quit" },
+      })
+    end,
   })
 end
 
