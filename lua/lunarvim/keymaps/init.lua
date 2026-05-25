@@ -149,6 +149,7 @@ end
 local function quit()
   map("n", "<leader>q",  "<cmd>confirm q<cr>",  { desc = "Quit" })
   map("n", "<leader>Q",  "<cmd>confirm qa<cr>", { desc = "Quit all" })
+  map("n", "<C-q>",      "<cmd>confirm q<cr>",  { desc = "Quit" })
 end
 
 function M.setup()

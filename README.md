@@ -148,6 +148,7 @@ Press `<Space>` and wait — the which-key popup should appear showing all avail
 |---|---|
 | `<leader>q` | Quit (confirms if unsaved) |
 | `<leader>Q` | Quit all |
+| `<C-q>` | Quit (confirms if unsaved) |
 
 ---
 
