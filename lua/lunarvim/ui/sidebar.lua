@@ -241,7 +241,7 @@ function M.open_thread(thread)
     if bufnr then state.term_bufs[thread.id] = bufnr end
   end
 
-  vim.cmd("startinsert")
+  vim.schedule(function() vim.cmd("startinsert") end)
 end
 
 -- ── Actions ───────────────────────────────────────────────────────────────────

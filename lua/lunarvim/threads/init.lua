@@ -102,6 +102,18 @@ function M.launch(ai_tool, callback, project)
   end)
 end
 
+-- Like launch but skips the name prompt, using the default name immediately.
+-- Defers via vim.schedule so callers (e.g. alpha dashboard) can close first.
+function M.launch_now(ai_tool, project)
+  local tool = M.AI_TOOLS[ai_tool]
+  if not tool then return end
+  local name   = tool.label .. " — " .. os.date("%b %d, %H:%M")
+  local thread = M.new(name, ai_tool, project)
+  vim.schedule(function()
+    require("lunarvim.ui.sidebar").open_thread(thread)
+  end)
+end
+
 function M.pick()
   local all = read()
   if #all == 0 then

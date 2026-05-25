@@ -43,11 +43,11 @@ function M.setup()
 
   dashboard.section.buttons.val = {
     dashboard.button("c", "   Claude Code    new session",
-      function() threads.launch("claude") end),
+      function() threads.launch_now("claude") end),
     dashboard.button("o", "   Codex          new session",
-      function() threads.launch("codex") end),
+      function() threads.launch_now("codex") end),
     dashboard.button("t", "   Terminal       new session",
-      function() threads.launch("terminal") end),
+      function() threads.launch_now("terminal") end),
     dashboard.button("r", "   Resume         pick a thread",
       function() threads.pick() end),
     dashboard.button("q", "   Quit",
