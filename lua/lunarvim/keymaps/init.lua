@@ -127,6 +127,7 @@ end
 
 -- AI sessions --
 local function ai()
+  map("n", "<leader>as", function() require("lunarvim.ui.sidebar").toggle() end,        { desc = "Toggle thread sidebar" })
   map("n", "<leader>an", function() require("lunarvim.threads").launch("claude") end,   { desc = "New Claude session" })
   map("n", "<leader>ao", function() require("lunarvim.threads").launch("codex") end,    { desc = "New Codex session" })
   map("n", "<leader>at", function() require("lunarvim.threads").launch("terminal") end, { desc = "New terminal session" })
