@@ -12,7 +12,7 @@ local function register_groups()
       if not ok then return end
       wk.add({
         { "<leader>b", group = "Buffers" },
-        { "<leader>e", group = "Explorer" },
+        { "<leader>E", group = "Explorer" },
         { "<leader>f", group = "Find" },
         { "<leader>g", group = "Git" },
         { "<leader>l", group = "LSP" },
@@ -78,8 +78,8 @@ end
 
 -- Explorer / Neo-tree --
 local function explorer()
-  map("n", "<leader>e",  "<cmd>Neotree toggle<cr>",           { desc = "Toggle explorer" })
-  map("n", "<leader>o",  "<cmd>Neotree reveal<cr>",           { desc = "Reveal file in explorer" })
+  map("n", "<leader>E",  "<cmd>Neotree toggle<cr>",           { desc = "Toggle file explorer" })
+  map("n", "<leader>O",  "<cmd>Neotree reveal<cr>",           { desc = "Reveal file in explorer" })
 end
 
 -- Terminal / Toggleterm --
@@ -127,6 +127,8 @@ end
 
 -- AI sessions --
 local function ai()
+  map("n", "<leader>e",  function() require("lunarvim.ui.sidebar").toggle() end,        { desc = "Toggle thread sidebar" })
+  map("n", "<leader>o",  function() require("lunarvim.ui.sidebar").open() end,          { desc = "Focus thread sidebar" })
   map("n", "<leader>as", function() require("lunarvim.ui.sidebar").toggle() end,        { desc = "Toggle thread sidebar" })
   map("n", "<leader>an", function() require("lunarvim.threads").launch("claude") end,   { desc = "New Claude session" })
   map("n", "<leader>ao", function() require("lunarvim.threads").launch("codex") end,    { desc = "New Codex session" })
