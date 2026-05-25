@@ -21,7 +21,6 @@ local function write(threads)
   vim.fn.writefile({ vim.json.encode(threads) }, threads_path)
 end
 
--- Returns up to n most recent threads (flat, sorted by last_accessed desc).
 function M.recent(n)
   local all = read()
   local result = {}
@@ -29,7 +28,6 @@ function M.recent(n)
   return result
 end
 
--- Returns threads grouped by project folder, each group sorted most-recent first.
 function M.get_grouped()
   local all   = read()
   local map   = {}
@@ -91,28 +89,7 @@ function M.delete(id)
   write(updated)
 end
 
--- dir is optional; when supplied the terminal opens in that directory.
-function M.open_terminal(ai_tool, thread_name, dir)
-  local tool = M.AI_TOOLS[ai_tool]
-  if not tool then return end
-  local ok, Terminal = pcall(function() return require("toggleterm.terminal").Terminal end)
-  if not ok then
-    vim.notify("toggleterm not available", vim.log.levels.ERROR)
-    return
-  end
-  local opts = {
-    direction     = "float",
-    display_name  = thread_name,
-    close_on_exit = false,
-    float_opts    = { border = "curved" },
-  }
-  if tool.cmd then opts.cmd = tool.cmd end
-  if dir      then opts.dir = dir end
-  Terminal:new(opts):toggle()
-end
-
--- project is optional override (e.g. from sidebar project header).
--- callback receives the created thread object.
+-- project is optional override. callback receives the created thread object.
 function M.launch(ai_tool, callback, project)
   local tool = M.AI_TOOLS[ai_tool]
   if not tool then return end
@@ -120,12 +97,11 @@ function M.launch(ai_tool, callback, project)
   vim.ui.input({ prompt = "Thread name: ", default = default }, function(name)
     if not name or name == "" then return end
     local thread = M.new(name, ai_tool, project)
-    M.open_terminal(ai_tool, name, project)
+    require("lunarvim.ui.sidebar").open_thread(thread)
     if callback then callback(thread) end
   end)
 end
 
--- Fuzzy picker over all saved threads.
 function M.pick()
   local all = read()
   if #all == 0 then
@@ -150,7 +126,7 @@ function M.pick()
       if t.id == choice.thread.id then t.last_accessed = os.time(); break end
     end
     write(threads)
-    M.open_terminal(choice.thread.ai_tool, choice.thread.name, choice.thread.project)
+    require("lunarvim.ui.sidebar").open_thread(choice.thread)
   end)
 end
 
