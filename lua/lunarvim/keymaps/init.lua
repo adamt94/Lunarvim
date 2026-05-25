@@ -95,13 +95,25 @@ local function terminal()
   map("t", "<C-k>",      "<C-\\><C-n><C-w>k", { desc = "Terminal: move to above window" })
   map("t", "<C-l>",      "<C-\\><C-n><C-w>l", { desc = "Terminal: move to right window" })
 
-  -- Focus the main editor window from any terminal (works inside Claude Code / Codex input)
-  -- <C-\><C-o> is a safe chord that no shell or terminal program will conflict with
+  -- Exit terminal insert mode reliably; <C-\> prefix is caught by nvim before
+  -- the inner program (Claude Code, Codex, etc.) ever sees it.
+  local function term_normal()
+    vim.api.nvim_feedkeys(
+      vim.api.nvim_replace_termcodes("<C-\\><C-n>", true, false, true), "n", false)
+  end
+
+  -- <C-\><C-o> — drop out of terminal input, stay in the content window
   map("t", "<C-\\><C-o>", function()
-    vim.cmd("stopinsert")
-    local main_win = require("lunarvim.ui.sidebar").get_main_win()
-    if main_win then vim.api.nvim_set_current_win(main_win) end
-  end, { desc = "Focus editor from terminal" })
+    term_normal()
+  end, { desc = "Exit terminal insert mode" })
+
+  -- <C-\><C-s> — drop out of terminal input and jump to the thread sidebar
+  map("t", "<C-\\><C-s>", function()
+    term_normal()
+    vim.schedule(function()
+      require("lunarvim.ui.sidebar").open()
+    end)
+  end, { desc = "Exit terminal and focus sidebar" })
 end
 
 -- Buffer management --
