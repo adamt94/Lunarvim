@@ -1,3 +1,4 @@
+<img width="935" height="651" alt="Screenshot 2026-05-25 at 22 20 24" src="https://github.com/user-attachments/assets/55124cc2-1385-4c14-b358-5c093ca26b35" />
 # Lunarvim
 
 > A terminal-first Neovim distribution built for AI-assisted development.
