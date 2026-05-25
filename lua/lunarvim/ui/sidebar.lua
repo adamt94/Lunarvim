@@ -29,6 +29,30 @@ end
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
+-- Parses SSH project paths. Returns (target, remote_path) or (nil, nil).
+-- Accepts:  user@host:/path   host:/path   ssh://user@host/path
+local function parse_ssh(path)
+  if not path then return nil, nil end
+  local target, rpath = path:match("^([^/%s][^:]*):(/[^:]*)$")
+  if target and (target:find("@") or not target:find("/")) then
+    return target, rpath
+  end
+  target, rpath = path:match("^ssh://([^/]+)(.*)")
+  if target then return target, (rpath ~= "" and rpath or "/") end
+  return nil, nil
+end
+
+-- Short display label for a project path (local or SSH).
+local function fmt_project(path)
+  local host, rpath = parse_ssh(path)
+  if host then
+    local bare  = host:gsub(".*@", "")
+    local folder = rpath and vim.fn.fnamemodify(rpath, ":t") or ""
+    return bare .. ":" .. (folder ~= "" and folder or bare)
+  end
+  return vim.fn.fnamemodify(path, ":t")
+end
+
 local function time_ago(ts)
   local d = os.difftime(os.time(), ts)
   if d < 3600  then return math.floor(d / 60) .. "m" end
@@ -94,9 +118,11 @@ local function render()
       local collapsed   = state.collapsed[proj.path]
       local toggle_icon = collapsed and "▶" or "▼"
       local count_str   = " (" .. #proj.threads .. ")"
-      local short       = vim.fn.fnamemodify(proj.path, ":t")  -- just folder name
+      local ssh_host    = parse_ssh(proj.path)
+      local short       = fmt_project(proj.path)
       local max_name    = width - 4 - #count_str               -- " ▼ " prefix + count suffix
       if #short > max_name then short = short:sub(1, max_name - 1) .. "…" end
+      if ssh_host then short = "" .. short end  -- SSH indicator
 
       local header_line = " " .. toggle_icon .. " " .. short .. count_str
       local header_lnr  = push(header_line, "LvimThreadsProject")
@@ -139,7 +165,7 @@ local function render()
 
   push("")
   push(SEP, "LvimThreadsSep")
-  push(" n new · <CR> open/collapse · r rename · d del · dd force", "LvimThreadsHint")
+  push(" n new · a add proj · <CR> open/collapse · r rename · dd del", "LvimThreadsHint")
   push("")
 
   return lines, line_map, hls
@@ -202,15 +228,23 @@ end
 -- Creates a new terminal buffer for thread in win and returns the bufnr.
 -- Leaves focus in win (caller is responsible for final focus).
 local function create_term(thread, win)
-  local tool = require("lunarvim.threads").AI_TOOLS[thread.ai_tool]
-  local cmd  = tool and tool.cmd or vim.o.shell
+  local tool   = require("lunarvim.threads").AI_TOOLS[thread.ai_tool]
+  local ai_cmd = tool and tool.cmd or vim.o.shell
 
   local buf = vim.api.nvim_create_buf(false, false)
   vim.api.nvim_win_set_buf(win, buf)
   vim.api.nvim_set_current_win(win)
 
-  local opts = {}
-  if thread.project and vim.fn.isdirectory(thread.project) == 1 then
+  local cmd, opts = ai_cmd, {}
+  local ssh_host, ssh_path = parse_ssh(thread.project)
+  if ssh_host then
+    -- SSH project: open a remote terminal, cd to path, then run the tool
+    local remote = ai_cmd
+    if ssh_path and ssh_path ~= "/" then
+      remote = "cd " .. vim.fn.shellescape(ssh_path) .. " && " .. ai_cmd
+    end
+    cmd = { "ssh", "-t", ssh_host, remote }
+  elseif thread.project and vim.fn.isdirectory(thread.project) == 1 then
     opts.cwd = thread.project
   end
 
@@ -290,19 +324,43 @@ function M.action_new()
 end
 
 function M.action_add_project()
+  -- Pre-fill with the parent of the current project so the user can type a sibling path.
+  -- Falls back to cwd. SSH paths are passed through without directory validation.
+  local e = entry_at_cursor()
+  local ctx_path
+  if e then
+    ctx_path = (e.type == "project" or e.type == "empty") and e.data.path
+               or (e.type == "thread" and e.data.project)
+  end
+
+  local default
+  if ctx_path and not parse_ssh(ctx_path) then
+    default = vim.fn.fnamemodify(ctx_path, ":h") .. "/"
+  else
+    default = vim.fn.getcwd() .. "/"
+  end
+
   vim.ui.input({
-    prompt     = "Add project: ",
-    default    = vim.fn.getcwd(),
+    prompt     = "Add project (path or user@host:/path): ",
+    default    = default,
     completion = "dir",
   }, function(path)
     if not path or path == "" then return end
-    path = vim.fn.fnamemodify(path, ":p"):gsub("/+$", "")
-    if vim.fn.isdirectory(path) == 0 then
-      vim.notify("Not a directory: " .. path, vim.log.levels.WARN)
-      return
+    path = path:gsub("/+$", "")
+    local ssh_host = parse_ssh(path)
+    if ssh_host then
+      -- Accept SSH paths as-is — can't validate remotely
+      require("lunarvim.projects").add(path)
+      refresh()
+    else
+      path = vim.fn.fnamemodify(path, ":p"):gsub("/+$", "")
+      if vim.fn.isdirectory(path) == 0 then
+        vim.notify("Not a directory: " .. path, vim.log.levels.WARN)
+        return
+      end
+      require("lunarvim.projects").add(path)
+      refresh()
     end
-    require("lunarvim.projects").add(path)
-    refresh()
   end)
 end
 
@@ -389,6 +447,7 @@ local function set_keymaps(buf)
   end, "Open thread / toggle project collapse")
   map("o", M.action_open, "Open thread")
   map("n",     M.action_new,          "New thread")
+  map("a",     M.action_add_project,  "Add project")
   map("p",     M.action_add_project,  "Add project")
   map("r",     M.action_rename,       "Rename thread")
   map("d",     M.action_delete,       "Delete (confirm)",    { nowait = false })

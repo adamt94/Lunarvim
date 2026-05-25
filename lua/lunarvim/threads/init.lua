@@ -97,7 +97,16 @@ local function default_name(project)
   for _, t in ipairs(all) do
     if t.project == project then count = count + 1 end
   end
-  local folder = vim.fn.fnamemodify(project, ":t")
+  -- SSH paths like user@host:/path → use "host:folder"
+  local folder
+  local ssh_target, ssh_path = project:match("^([^/%s][^:]*):(/[^:]*)$")
+  if ssh_target and (ssh_target:find("@") or not ssh_target:find("/")) then
+    local bare   = ssh_target:gsub(".*@", "")
+    local remote = ssh_path and vim.fn.fnamemodify(ssh_path, ":t") or ""
+    folder = bare .. (remote ~= "" and ":" .. remote or "")
+  else
+    folder = vim.fn.fnamemodify(project, ":t")
+  end
   return folder .. " #" .. (count + 1)
 end
 
