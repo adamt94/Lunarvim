@@ -143,8 +143,8 @@ local function render()
             local status = alive and "◆" or "·"
 
             -- format: " ● ◆ icon name…pad ts"
-            -- fixed overhead: 1(sp)+1(active)+1(sp)+1(status)+1(sp)+2(icon)+1(sp)+1(sp)+1(ts_sp) = ~9
-            local name_budget = width - 10 - #ts
+            -- fixed display cols: 1+1+1+1+1+2(icon)+1+1 = 9
+            local name_budget = width - 9 - #ts
             local name        = t.name
             if #name > name_budget then name = name:sub(1, name_budget - 1) .. "…" end
             local pad = math.max(0, name_budget - #name)
@@ -163,9 +163,6 @@ local function render()
     end
   end
 
-  push("")
-  push(SEP, "LvimThreadsSep")
-  push(" n new · a add proj · <CR> open/collapse · r rename · dd del", "LvimThreadsHint")
   push("")
 
   return lines, line_map, hls
