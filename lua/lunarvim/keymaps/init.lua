@@ -125,6 +125,15 @@ local function ui()
   map("n", "<leader>us", "<cmd>set spell!<cr>",          { desc = "Toggle spell check" })
 end
 
+-- AI sessions --
+local function ai()
+  map("n", "<leader>an", function() require("lunarvim.threads").launch("claude") end,   { desc = "New Claude session" })
+  map("n", "<leader>ao", function() require("lunarvim.threads").launch("codex") end,    { desc = "New Codex session" })
+  map("n", "<leader>at", function() require("lunarvim.threads").launch("terminal") end, { desc = "New terminal session" })
+  map("n", "<leader>ar", function() require("lunarvim.threads").pick() end,             { desc = "Resume thread" })
+  map("n", "<leader>ah", "<cmd>Alpha<cr>",                                              { desc = "Home dashboard" })
+end
+
 -- Quit --
 local function quit()
   map("n", "<leader>q",  "<cmd>confirm q<cr>",  { desc = "Quit" })
@@ -140,6 +149,7 @@ function M.setup()
   buffers()
   windows()
   ui()
+  ai()
   quit()
 end
 
