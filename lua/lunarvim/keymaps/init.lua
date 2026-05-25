@@ -95,24 +95,17 @@ local function terminal()
   map("t", "<C-k>",      "<C-\\><C-n><C-w>k", { desc = "Terminal: move to above window" })
   map("t", "<C-l>",      "<C-\\><C-n><C-w>l", { desc = "Terminal: move to right window" })
 
-  -- Exit terminal insert mode reliably; <C-\> prefix is caught by nvim before
-  -- the inner program (Claude Code, Codex, etc.) ever sees it.
-  local function term_normal()
+  -- Single-key terminal escapes — nvim intercepts these before Claude Code / Codex.
+  -- <C-\>-prefixed chords don't work as t-mode map LHS; plain keys do.
+
+  -- <C-q>: lose input focus, stay in the terminal window (then use <C-h/j/k/l> to move)
+  map("t", "<C-q>", "<C-\\><C-n>", { desc = "Exit terminal insert mode" })
+
+  -- <C-f>: lose input focus and jump straight to the thread sidebar
+  map("t", "<C-f>", function()
     vim.api.nvim_feedkeys(
       vim.api.nvim_replace_termcodes("<C-\\><C-n>", true, false, true), "n", false)
-  end
-
-  -- <C-\><C-o> — drop out of terminal input, stay in the content window
-  map("t", "<C-\\><C-o>", function()
-    term_normal()
-  end, { desc = "Exit terminal insert mode" })
-
-  -- <C-\><C-s> — drop out of terminal input and jump to the thread sidebar
-  map("t", "<C-\\><C-s>", function()
-    term_normal()
-    vim.schedule(function()
-      require("lunarvim.ui.sidebar").open()
-    end)
+    vim.schedule(function() require("lunarvim.ui.sidebar").open() end)
   end, { desc = "Exit terminal and focus sidebar" })
 end
 

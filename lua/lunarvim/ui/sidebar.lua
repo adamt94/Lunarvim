@@ -283,34 +283,43 @@ function M.action_rename()
   end)
 end
 
+local function do_delete(e)
+  if e.type == "thread" then
+    local t = e.data
+    require("lunarvim.threads").delete(t.id)
+    if state.active_id == t.id then state.active_id = nil end
+    local bufnr = state.term_bufs[t.id]
+    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end
+    state.term_bufs[t.id] = nil
+    refresh()
+  elseif e.type == "project" or e.type == "empty" then
+    require("lunarvim.projects").remove(e.data.path)
+    refresh()
+  end
+end
+
 function M.action_delete()
   local e = entry_at_cursor()
   if not e then return end
 
   if e.type == "thread" then
-    local t = e.data
-    vim.ui.input({ prompt = 'Delete "' .. t.name .. '"? (y/N): ' }, function(inp)
-      if inp and inp:lower() == "y" then
-        require("lunarvim.threads").delete(t.id)
-        if state.active_id == t.id then state.active_id = nil end
-        local bufnr = state.term_bufs[t.id]
-        if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-          vim.api.nvim_buf_delete(bufnr, { force = true })
-        end
-        state.term_bufs[t.id] = nil
-        refresh()
-      end
+    vim.ui.input({ prompt = 'Delete "' .. e.data.name .. '"? (y/N): ' }, function(inp)
+      if inp and inp:lower() == "y" then do_delete(e) end
     end)
-
   elseif e.type == "project" or e.type == "empty" then
     local short = vim.fn.fnamemodify(e.data.path, ":~")
     vim.ui.input({ prompt = 'Remove "' .. short .. '" from sidebar? (y/N): ' }, function(inp)
-      if inp and inp:lower() == "y" then
-        require("lunarvim.projects").remove(e.data.path)
-        refresh()
-      end
+      if inp and inp:lower() == "y" then do_delete(e) end
     end)
   end
+end
+
+function M.action_delete_force()
+  local e = entry_at_cursor()
+  if not e then return end
+  do_delete(e)
 end
 
 -- ── Buffer setup ──────────────────────────────────────────────────────────────
@@ -326,18 +335,19 @@ local function create_buf()
 end
 
 local function set_keymaps(buf)
-  local function map(lhs, fn, desc)
+  local function map(lhs, fn, desc, extra)
     vim.keymap.set("n", lhs, fn,
-      { buffer = buf, silent = true, nowait = true, desc = desc })
+      vim.tbl_extend("force", { buffer = buf, silent = true, nowait = true, desc = desc }, extra or {}))
   end
-  map("<CR>",  M.action_open,        "Open thread")
-  map("o",     M.action_open,        "Open thread")
-  map("n",     M.action_new,         "New thread")
-  map("p",     M.action_add_project, "Add project")
-  map("r",     M.action_rename,      "Rename thread")
-  map("d",     M.action_delete,      "Delete thread / remove project")
-  map("q",     M.close,              "Close sidebar")
-  map("<Esc>", M.close,              "Close sidebar")
+  map("<CR>",  M.action_open,         "Open thread")
+  map("o",     M.action_open,         "Open thread")
+  map("n",     M.action_new,          "New thread")
+  map("p",     M.action_add_project,  "Add project")
+  map("r",     M.action_rename,       "Rename thread")
+  map("d",     M.action_delete,       "Delete (confirm)",    { nowait = false })
+  map("dd",    M.action_delete_force, "Delete (no confirm)")
+  map("q",     M.close,               "Close sidebar")
+  map("<Esc>", M.close,               "Close sidebar")
 end
 
 -- ── Window management ─────────────────────────────────────────────────────────
