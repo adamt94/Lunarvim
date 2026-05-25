@@ -108,6 +108,7 @@ Press `<Space>` and wait — the which-key popup should appear showing all avail
 | `<leader>tf` | Open terminal (floating) |
 | `<leader>tv` | Open terminal (vertical split) |
 | `<Esc><Esc>` | Exit terminal mode |
+| `<C-o>` | Focus editor from terminal (works inside Claude Code / Codex input) |
 
 ### Buffers & Windows
 

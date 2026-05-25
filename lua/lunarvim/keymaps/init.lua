@@ -94,6 +94,14 @@ local function terminal()
   map("t", "<C-j>",      "<C-\\><C-n><C-w>j", { desc = "Terminal: move to below window" })
   map("t", "<C-k>",      "<C-\\><C-n><C-w>k", { desc = "Terminal: move to above window" })
   map("t", "<C-l>",      "<C-\\><C-n><C-w>l", { desc = "Terminal: move to right window" })
+
+  -- Focus the main editor window from any terminal (works inside Claude Code / Codex input)
+  -- <C-o> is intercepted by Neovim before the running program sees it
+  map("t", "<C-o>", function()
+    vim.cmd("stopinsert")
+    local main_win = require("lunarvim.ui.sidebar").get_main_win()
+    if main_win then vim.api.nvim_set_current_win(main_win) end
+  end, { desc = "Focus editor from terminal" })
 end
 
 -- Buffer management --
