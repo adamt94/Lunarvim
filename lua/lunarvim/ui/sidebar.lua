@@ -222,6 +222,26 @@ function M.get_main_win()
   return nil
 end
 
+-- Polls ~/.claude/sessions/<pid>.json until sessionId appears, then persists it.
+local function capture_session_id(thread_id, job_id, attempt)
+  attempt = attempt or 1
+  if attempt > 8 then return end
+  local pid = vim.fn.jobpid(job_id)
+  if not pid or pid <= 0 then return end
+  local path = vim.fn.expand("~/.claude/sessions/") .. tostring(pid) .. ".json"
+  if vim.fn.filereadable(path) == 1 then
+    local lines = vim.fn.readfile(path)
+    if #lines > 0 then
+      local ok, data = pcall(vim.json.decode, lines[1])
+      if ok and data.sessionId then
+        require("lunarvim.threads").set_session_id(thread_id, data.sessionId)
+        return
+      end
+    end
+  end
+  vim.defer_fn(function() capture_session_id(thread_id, job_id, attempt + 1) end, 1000)
+end
+
 -- Creates a new terminal buffer for thread in win and returns the bufnr.
 -- Leaves focus in win (caller is responsible for final focus).
 local function create_term(thread, win)
@@ -232,31 +252,47 @@ local function create_term(thread, win)
   vim.api.nvim_win_set_buf(win, buf)
   vim.api.nvim_set_current_win(win)
 
-  local cmd, opts = ai_cmd, {}
+  local cmd, opts = {}, {}
   local ssh_host, ssh_path = parse_ssh(thread.project)
+
   if ssh_host then
-    -- SSH project: open a remote terminal, cd to path, then run the tool
     local remote = ai_cmd
     if ssh_path and ssh_path ~= "/" then
       remote = "cd " .. vim.fn.shellescape(ssh_path) .. " && " .. ai_cmd
     end
     cmd = { "ssh", "-t", ssh_host, remote }
-  elseif thread.project and vim.fn.isdirectory(thread.project) == 1 then
-    opts.cwd = thread.project
+  else
+    -- Direct exec (list form) so jobpid() returns the AI tool's own PID.
+    if thread.ai_tool == "claude" then
+      cmd = thread.session_id
+        and { "claude", "--resume", thread.session_id }
+        or  { "claude" }
+    elseif ai_cmd then
+      cmd = { ai_cmd }
+    else
+      cmd = { vim.o.shell }
+    end
+    if thread.project and vim.fn.isdirectory(thread.project) == 1 then
+      opts.cwd = thread.project
+    end
   end
 
   local ok, job_id = pcall(vim.fn.termopen, cmd, opts)
   if not ok or (type(job_id) == "number" and job_id <= 0) then
-    vim.notify("Could not start: " .. tostring(cmd), vim.log.levels.WARN)
+    vim.notify("Could not start: " .. vim.inspect(cmd), vim.log.levels.WARN)
     vim.api.nvim_buf_delete(buf, { force = true })
     return nil
   end
 
   pcall(vim.api.nvim_buf_set_name, buf, thread.name)
-  vim.bo[buf].buflisted    = false
+  vim.bo[buf].buflisted      = false
   state.term_jobs[thread.id] = job_id
 
-  -- In normal mode, <C-f> scrolls to the top of terminal output
+  -- Capture Claude session ID after start so we can resume later
+  if thread.ai_tool == "claude" and not thread.session_id and not ssh_host then
+    vim.defer_fn(function() capture_session_id(thread.id, job_id) end, 1500)
+  end
+
   vim.keymap.set("n", "<C-f>", "gg", { buffer = buf, silent = true, desc = "Go to top of terminal output" })
 
   return buf
@@ -267,6 +303,10 @@ end
 -- reuses an existing terminal buffer if one exists for this thread.
 function M.open_thread(thread)
   if not M.is_open() then M.open() end
+
+  -- Re-fetch from disk so we always have the latest session_id
+  local fresh = require("lunarvim.threads").get(thread.id)
+  if fresh then thread = fresh end
 
   state.active_id = thread.id
   refresh()

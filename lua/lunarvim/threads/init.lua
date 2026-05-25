@@ -80,6 +80,14 @@ function M.new(name, ai_tool, project)
   return thread
 end
 
+function M.set_session_id(id, session_id)
+  local all = read()
+  for _, t in ipairs(all) do
+    if t.id == id then t.session_id = session_id; break end
+  end
+  write(all)
+end
+
 function M.rename(id, name)
   local all = read()
   for _, t in ipairs(all) do
