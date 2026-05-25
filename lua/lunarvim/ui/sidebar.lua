@@ -60,9 +60,11 @@ end
 -- ── Renderer ──────────────────────────────────────────────────────────────────
 
 local function render()
+  local width       = (state.win and vim.api.nvim_win_is_valid(state.win))
+                      and vim.api.nvim_win_get_width(state.win) or WIDTH
   local threads_mod = require("lunarvim.threads")
   local projects    = get_all_projects()
-  local SEP         = "  " .. string.rep("─", WIDTH - 4)
+  local SEP         = string.rep("─", width - 1)
 
   local lines    = {}
   local line_map = {}
@@ -75,24 +77,24 @@ local function render()
   end
 
   push("")
-  push("  THREADS", "LvimThreadsHeader")
+  push(" THREADS", "LvimThreadsHeader")
   push(SEP, "LvimThreadsSep")
 
   if #projects == 0 then
     push("")
-    push("  No projects yet.", "LvimThreadsMuted")
-    push("  Press p to add one.", "LvimThreadsMuted")
+    push(" No projects yet.", "LvimThreadsMuted")
+    push(" Press p to add one.", "LvimThreadsMuted")
     push("")
   else
     for _, proj in ipairs(projects) do
       push("")
       local short = vim.fn.fnamemodify(proj.path, ":~")
-      if #short > WIDTH - 4 then short = "…" .. short:sub(-(WIDTH - 5)) end
-      local header_lnr     = push("  " .. short, "LvimThreadsProject")
+      if #short > width - 2 then short = "…" .. short:sub(-(width - 3)) end
+      local header_lnr     = push(" " .. short, "LvimThreadsProject")
       line_map[header_lnr] = { type = "project", data = proj }
 
       if #proj.threads == 0 then
-        local lnr     = push("    no threads — n to start one", "LvimThreadsMuted")
+        local lnr     = push("  no threads — n to start one", "LvimThreadsMuted")
         line_map[lnr] = { type = "empty", data = proj }
       else
         for _, t in ipairs(proj.threads) do
@@ -100,17 +102,17 @@ local function render()
           local active = (state.active_id == t.id) and "●" or " "
           local ts     = time_ago(t.last_accessed)
 
-          local name_budget = WIDTH - 10 - #ts
+          local name_budget = width - 8 - #ts
           local name        = t.name
           if #name > name_budget then name = name:sub(1, name_budget - 1) .. "…" end
           local pad = name_budget - #name
 
-          local line    = string.format("  %s %s  %s%s %s",
+          local line    = string.format(" %s %s %s%s %s",
             active, tool.icon, name, string.rep(" ", pad), ts)
           local lnr     = push(line)
           line_map[lnr] = { type = "thread", data = t }
 
-          if active == "●" then hls[#hls + 1] = { lnr, 2, 3, "LvimThreadsActive" } end
+          if active == "●" then hls[#hls + 1] = { lnr, 1, 2, "LvimThreadsActive" } end
           hls[#hls + 1] = { lnr, #line - #ts, -1, "LvimThreadsTime" }
         end
       end
@@ -119,7 +121,7 @@ local function render()
 
   push("")
   push(SEP, "LvimThreadsSep")
-  push("  p add proj  ·  n new  ·  <CR> open  ·  d del", "LvimThreadsHint")
+  push(" p proj · n new · <CR> open · d del · dd force-del", "LvimThreadsHint")
   push("")
 
   return lines, line_map, hls
@@ -129,6 +131,17 @@ local function apply_highlights(hls)
   vim.api.nvim_buf_clear_namespace(state.buf, NS, 0, -1)
   for _, h in ipairs(hls) do
     vim.api.nvim_buf_add_highlight(state.buf, NS, h[4], h[1] - 1, h[2], h[3])
+  end
+end
+
+local function cursor_to_active()
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
+  if not state.active_id then return end
+  for lnr, entry in pairs(state.line_map) do
+    if entry.type == "thread" and entry.data.id == state.active_id then
+      vim.api.nvim_win_set_cursor(state.win, { lnr, 0 })
+      return
+    end
   end
 end
 
@@ -192,6 +205,10 @@ local function create_term(thread, win)
 
   pcall(vim.api.nvim_buf_set_name, buf, thread.name)
   vim.bo[buf].buflisted = false
+
+  -- In normal mode (not in input), <C-f> scrolls to the top of terminal output
+  vim.keymap.set("n", "<C-f>", "gg", { buffer = buf, silent = true, desc = "Go to top of terminal output" })
+
   return buf
 end
 
@@ -203,6 +220,7 @@ function M.open_thread(thread)
 
   state.active_id = thread.id
   refresh()
+  cursor_to_active()
 
   local main_win = M.get_main_win()
   if not main_win then
@@ -346,6 +364,7 @@ local function set_keymaps(buf)
   map("r",     M.action_rename,       "Rename thread")
   map("d",     M.action_delete,       "Delete (confirm)",    { nowait = false })
   map("dd",    M.action_delete_force, "Delete (no confirm)")
+  map("<C-f>", "G",                    "Go to bottom (see hints)")
   map("q",     M.close,               "Close sidebar")
   map("<Esc>", M.close,               "Close sidebar")
 end
@@ -387,6 +406,17 @@ function M.open()
     callback = function() state.win = nil end,
   })
 
+  vim.api.nvim_create_autocmd("WinEnter", {
+    buffer   = state.buf,
+    callback = function() cursor_to_active() end,
+  })
+
+  vim.api.nvim_create_autocmd("WinResized", {
+    callback = function()
+      if state.win and vim.api.nvim_win_is_valid(state.win) then refresh() end
+    end,
+  })
+
   refresh()
 
   -- Defer focus so our win wins over any WinEnter autocmds fired by other
@@ -395,6 +425,7 @@ function M.open()
   vim.schedule(function()
     if win and vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_set_current_win(win)
+      cursor_to_active()
     end
   end)
 end
