@@ -7,6 +7,7 @@ local state = {
   win       = nil,
   line_map  = {},   -- lnr -> { type = "thread"|"project"|"empty", data = ... }
   active_id = nil,
+  term_bufs = {},   -- thread_id -> terminal bufnr (in-memory, resets on restart)
 }
 
 -- ── Highlights ────────────────────────────────────────────────────────────────
@@ -32,13 +33,11 @@ local function time_ago(ts)
   return math.floor(d / 86400) .. "d"
 end
 
--- Builds the unified project list: all explicitly added projects merged with
--- projects inferred from threads, sorted by most-recent activity descending.
 local function get_all_projects()
   local threads_mod  = require("lunarvim.threads")
   local projects_mod = require("lunarvim.projects")
 
-  local map = {}  -- path -> { path, threads, last_active }
+  local map = {}
 
   for _, p in ipairs(projects_mod.list()) do
     map[p.path] = { path = p.path, threads = {}, last_active = p.added_at }
@@ -88,14 +87,13 @@ local function render()
     for _, proj in ipairs(projects) do
       push("")
       local short = vim.fn.fnamemodify(proj.path, ":~")
-      -- Truncate long paths
       if #short > WIDTH - 4 then short = "…" .. short:sub(-(WIDTH - 5)) end
-      local header_lnr          = push("  " .. short, "LvimThreadsProject")
-      line_map[header_lnr]      = { type = "project", data = proj }
+      local header_lnr     = push("  " .. short, "LvimThreadsProject")
+      line_map[header_lnr] = { type = "project", data = proj }
 
       if #proj.threads == 0 then
-        local lnr            = push("    no threads — n to start one", "LvimThreadsMuted")
-        line_map[lnr]        = { type = "empty", data = proj }
+        local lnr     = push("    no threads — n to start one", "LvimThreadsMuted")
+        line_map[lnr] = { type = "empty", data = proj }
       else
         for _, t in ipairs(proj.threads) do
           local tool   = threads_mod.AI_TOOLS[t.ai_tool] or { icon = "?" }
@@ -107,10 +105,10 @@ local function render()
           if #name > name_budget then name = name:sub(1, name_budget - 1) .. "…" end
           local pad = name_budget - #name
 
-          local line       = string.format("  %s %s  %s%s %s",
+          local line    = string.format("  %s %s  %s%s %s",
             active, tool.icon, name, string.rep(" ", pad), ts)
-          local lnr        = push(line)
-          line_map[lnr]    = { type = "thread", data = t }
+          local lnr     = push(line)
+          line_map[lnr] = { type = "thread", data = t }
 
           if active == "●" then hls[#hls + 1] = { lnr, 2, 3, "LvimThreadsActive" } end
           hls[#hls + 1] = { lnr, #line - #ts, -1, "LvimThreadsTime" }
@@ -151,8 +149,6 @@ local function entry_at_cursor()
   return state.line_map[vim.api.nvim_win_get_cursor(state.win)[1]]
 end
 
--- Returns the project path relevant to the cursor position:
--- project header → that project, thread row → thread's project, else nil.
 local function project_at_cursor()
   local e = entry_at_cursor()
   if not e then return nil end
@@ -160,14 +156,82 @@ local function project_at_cursor()
   if e.type == "thread"                        then return e.data.project end
 end
 
+-- ── Terminal panel ────────────────────────────────────────────────────────────
+
+-- Returns the first non-sidebar, non-floating window in the current tab.
+function M.get_main_win()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if win ~= state.win and vim.api.nvim_win_get_config(win).relative == "" then
+      return win
+    end
+  end
+  return nil
+end
+
+-- Creates a new terminal buffer for thread in win and returns the bufnr.
+-- Leaves focus in win (caller is responsible for final focus).
+local function create_term(thread, win)
+  local tool = require("lunarvim.threads").AI_TOOLS[thread.ai_tool]
+  local cmd  = tool and tool.cmd or vim.o.shell
+
+  local buf = vim.api.nvim_create_buf(false, false)
+  vim.api.nvim_win_set_buf(win, buf)
+  vim.api.nvim_set_current_win(win)
+
+  local opts = {}
+  if thread.project and vim.fn.isdirectory(thread.project) == 1 then
+    opts.cwd = thread.project
+  end
+
+  local ok, job_id = pcall(vim.fn.termopen, cmd, opts)
+  if not ok or (type(job_id) == "number" and job_id <= 0) then
+    vim.notify("Could not start: " .. tostring(cmd), vim.log.levels.WARN)
+    vim.api.nvim_buf_delete(buf, { force = true })
+    return nil
+  end
+
+  pcall(vim.api.nvim_buf_set_name, buf, thread.name)
+  vim.bo[buf].buflisted = false
+  return buf
+end
+
+-- Opens thread's terminal in the main content window.
+-- Ensures the sidebar is open, creates the main window if missing,
+-- reuses an existing terminal buffer if one exists for this thread.
+function M.open_thread(thread)
+  if not M.is_open() then M.open() end
+
+  state.active_id = thread.id
+  refresh()
+
+  local main_win = M.get_main_win()
+  if not main_win then
+    -- Sidebar is the only window; split a panel to its right
+    vim.api.nvim_set_current_win(state.win)
+    vim.cmd("rightbelow vsplit")
+    main_win = vim.api.nvim_get_current_win()
+    vim.api.nvim_set_current_win(state.win)
+  end
+
+  local bufnr = state.term_bufs[thread.id]
+  if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+    vim.api.nvim_win_set_buf(main_win, bufnr)
+    vim.api.nvim_set_current_win(main_win)
+  else
+    -- create_term switches to main_win internally
+    bufnr = create_term(thread, main_win)
+    if bufnr then state.term_bufs[thread.id] = bufnr end
+  end
+
+  vim.cmd("startinsert")
+end
+
 -- ── Actions ───────────────────────────────────────────────────────────────────
 
 function M.action_open()
   local e = entry_at_cursor()
   if not e or e.type ~= "thread" then return end
-  state.active_id = e.data.id
-  refresh()
-  require("lunarvim.threads").open_terminal(e.data.ai_tool, e.data.name, e.data.project)
+  M.open_thread(e.data)
 end
 
 function M.action_new()
@@ -183,10 +247,8 @@ function M.action_new()
     format_item = function(item) return item.label end,
   }, function(choice)
     if not choice then return end
-    threads.launch(choice.key, function(thread)
-      state.active_id = thread.id
-      refresh()
-    end, proj)
+    -- launch creates the thread record and calls open_thread
+    threads.launch(choice.key, nil, proj)
   end)
 end
 
@@ -213,11 +275,14 @@ function M.action_rename()
   vim.ui.input({ prompt = "Rename: ", default = e.data.name }, function(name)
     if not name or name == "" then return end
     require("lunarvim.threads").rename(e.data.id, name)
+    local bufnr = state.term_bufs[e.data.id]
+    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+      pcall(vim.api.nvim_buf_set_name, bufnr, name)
+    end
     refresh()
   end)
 end
 
--- d is context-aware: deletes a thread or removes a project from the sidebar.
 function M.action_delete()
   local e = entry_at_cursor()
   if not e then return end
@@ -228,6 +293,11 @@ function M.action_delete()
       if inp and inp:lower() == "y" then
         require("lunarvim.threads").delete(t.id)
         if state.active_id == t.id then state.active_id = nil end
+        local bufnr = state.term_bufs[t.id]
+        if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+          vim.api.nvim_buf_delete(bufnr, { force = true })
+        end
+        state.term_bufs[t.id] = nil
         refresh()
       end
     end)
