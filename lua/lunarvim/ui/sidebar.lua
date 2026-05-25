@@ -20,11 +20,11 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "LvimThreadsHeader",  { link = "Title",        default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsProject", { link = "Directory",    default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsActive",  { link = "DiagnosticOk", default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsLive",    { link = "DiagnosticOk", default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsTime",    { link = "Comment",      default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsSep",     { link = "NonText",      default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsHint",    { link = "Comment",      default = true })
   vim.api.nvim_set_hl(0, "LvimThreadsMuted",   { link = "Comment",      default = true })
+  require("lunarvim.ai.status").setup_highlights()
 end
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
@@ -103,6 +103,10 @@ local function render()
     return #lines
   end
 
+  local function char_span(line, start_idx, end_idx)
+    return vim.str_byteindex(line, start_idx), vim.str_byteindex(line, end_idx)
+  end
+
   push("")
   push(" THREADS", "LvimThreadsHeader")
   push(SEP, "LvimThreadsSep")
@@ -139,8 +143,7 @@ local function render()
             local ts     = time_ago(t.last_accessed)
 
             local job_id = state.term_jobs[t.id]
-            local alive  = job_id and vim.fn.jobwait({ job_id }, 0)[1] == -1
-            local status = alive and "◆" or "·"
+            local status = require("lunarvim.ai.status").for_thread(t, job_id)
 
             -- format: " ● ◆ icon name…pad ts"
             -- fixed display cols: 1+1+1+1+1+2(icon)+1+1 = 9
@@ -150,12 +153,16 @@ local function render()
             local pad = math.max(0, name_budget - #name)
 
             local line    = string.format(" %s %s %s %s%s %s",
-              active, status, tool.icon, name, string.rep(" ", pad), ts)
+              active, status.icon, tool.icon, name, string.rep(" ", pad), ts)
             local lnr     = push(line)
             line_map[lnr] = { type = "thread", data = t }
 
-            if active == "●" then hls[#hls + 1] = { lnr, 1, 2, "LvimThreadsActive" } end
-            if alive         then hls[#hls + 1] = { lnr, 3, 4, "LvimThreadsLive"   } end
+            if active == "●" then
+              local start_col, end_col = char_span(line, 1, 2)
+              hls[#hls + 1] = { lnr, start_col, end_col, "LvimThreadsActive" }
+            end
+            local start_col, end_col = char_span(line, 3, 4)
+            hls[#hls + 1] = { lnr, start_col, end_col, status.hl }
             hls[#hls + 1] = { lnr, #line - #ts, -1, "LvimThreadsTime" }
           end
         end
@@ -242,6 +249,34 @@ local function capture_session_id(thread_id, job_id, attempt)
   vim.defer_fn(function() capture_session_id(thread_id, job_id, attempt + 1) end, 1000)
 end
 
+local function capture_codex_session_id(thread_id, project, started_at, attempt)
+  attempt = attempt or 1
+  if attempt > 8 then return end
+
+  local files = vim.fn.glob(vim.fn.expand("~/.codex/sessions/") .. "**/*.jsonl", false, true)
+  table.sort(files, function(a, b) return vim.fn.getftime(a) > vim.fn.getftime(b) end)
+
+  for _, file in ipairs(files) do
+    if vim.fn.getftime(file) >= started_at - 30 then
+      local ok, lines = pcall(vim.fn.readfile, file, "", 20)
+      if ok then
+        for _, line in ipairs(lines) do
+          local ok_json, data = pcall(vim.json.decode, line)
+          local payload = ok_json and data and data.payload
+          if payload and payload.id and payload.cwd == project then
+            require("lunarvim.threads").set_session_id(thread_id, payload.id)
+            return
+          end
+        end
+      end
+    end
+  end
+
+  vim.defer_fn(function()
+    capture_codex_session_id(thread_id, project, started_at, attempt + 1)
+  end, 1000)
+end
+
 -- Creates a new terminal buffer for thread in win and returns the bufnr.
 -- Leaves focus in win (caller is responsible for final focus).
 local function create_term(thread, win)
@@ -277,6 +312,7 @@ local function create_term(thread, win)
     end
   end
 
+  local started_at = os.time()
   local ok, job_id = pcall(vim.fn.termopen, cmd, opts)
   if not ok or (type(job_id) == "number" and job_id <= 0) then
     vim.notify("Could not start: " .. vim.inspect(cmd), vim.log.levels.WARN)
@@ -291,9 +327,13 @@ local function create_term(thread, win)
   -- Capture Claude session ID after start so we can resume later
   if thread.ai_tool == "claude" and not thread.session_id and not ssh_host then
     vim.defer_fn(function() capture_session_id(thread.id, job_id) end, 1500)
+  elseif thread.ai_tool == "codex" and not thread.session_id and not ssh_host then
+    vim.defer_fn(function() capture_codex_session_id(thread.id, thread.project, started_at) end, 1500)
   end
 
-  vim.keymap.set("n", "<C-f>", "gg", { buffer = buf, silent = true, desc = "Go to top of terminal output" })
+  vim.keymap.set("n", "<C-f>", function()
+    require("lunarvim.ui.sidebar").open()
+  end, { buffer = buf, silent = true, desc = "Focus thread sidebar" })
 
   return buf
 end

@@ -79,26 +79,17 @@ Press `<Space>` and wait — the which-key popup should appear showing all avail
 
 `<leader>` is `Space`.
 
-### Finding things
+### AI Sessions
 
 | Key | Action |
 |---|---|
-| `<leader>ff` | Find files |
-| `<leader>fg` | Live grep (search text across project) |
-| `<leader>fw` | Grep word under cursor |
-| `<leader>fb` | Find open buffers |
-| `<leader>fr` | Recent files |
-| `<leader>fk` | Find keymaps |
-| `<leader>fh` | Search help tags |
-
-### Navigation
-
-| Key | Action |
-|---|---|
-| `<leader>e` | Toggle file explorer |
-| `<leader>o` | Reveal current file in explorer |
-| `<C-h/j/k/l>` | Move between windows |
-| `<S-h>` / `<S-l>` | Previous / next buffer |
+| `<leader>e` | Toggle thread sidebar |
+| `<leader>o` | Focus thread sidebar |
+| `<leader>an` | New Claude session |
+| `<leader>ao` | New Codex session |
+| `<leader>at` | New terminal session |
+| `<leader>ar` | Resume thread (pick from list) |
+| `<leader>ah` | Home dashboard |
 
 ### Terminal
 
@@ -108,39 +99,21 @@ Press `<Space>` and wait — the which-key popup should appear showing all avail
 | `<leader>tf` | Open terminal (floating) |
 | `<leader>tv` | Open terminal (vertical split) |
 | `<Esc><Esc>` | Exit terminal mode |
-| `<C-o>` | Focus editor from terminal (works inside Claude Code / Codex input) |
-
-### Buffers & Windows
-
-| Key | Action |
-|---|---|
-| `<leader>bc` | Close current buffer |
-| `<leader>bC` | Close all other buffers |
-| `<leader>wv` | Vertical split |
-| `<leader>ws` | Horizontal split |
-| `<leader>wc` | Close window |
-| `<leader>w=` | Equalize window sizes |
+| `<C-q>` | Exit terminal insert mode (stay in window) |
+| `<C-f>` | Exit terminal and focus thread sidebar |
+| `<C-h/j/k/l>` | Move between windows (works inside terminal too) |
 
 ### Editor
 
 | Key | Action |
 |---|---|
 | `jk` | Exit insert mode |
-| `gcc` | Toggle line comment |
-| `gc` + motion | Toggle comment over motion |
+| `<C-h/j/k/l>` | Move between windows |
+| `gcc` / `gc` + motion | Toggle comment |
+| `<leader>/` | Toggle comment (shortcut) |
 | `<A-j>` / `<A-k>` | Move line / selection up or down |
 | `>` / `<` (visual) | Indent / dedent, stay in visual mode |
 | `<Esc>` | Clear search highlights |
-| `<leader>/` | Toggle comment (shortcut for `gcc`) |
-
-### UI Toggles
-
-| Key | Action |
-|---|---|
-| `<leader>un` | Toggle line numbers |
-| `<leader>ur` | Toggle relative numbers |
-| `<leader>uw` | Toggle word wrap |
-| `<leader>us` | Toggle spell check |
 
 ### Quit
 
@@ -148,7 +121,6 @@ Press `<Space>` and wait — the which-key popup should appear showing all avail
 |---|---|
 | `<leader>q` | Quit (confirms if unsaved) |
 | `<leader>Q` | Quit all |
-| `<C-q>` | Quit (confirms if unsaved) |
 
 ---
 
@@ -178,8 +150,9 @@ This keeps the editor lean and you in control of which AI you're using.
         ├── plugins/
         │   └── init.lua          # Plugin specs passed to lazy.setup()
         ├── ai/
-        │   └── init.lua          # Context capture (selections, buffers, threads)
-        ├── ui/                   # Coming: terminal UX helpers
+        │   ├── init.lua          # Context capture (selections, buffers, threads)
+        │   └── status.lua        # Live Claude session status
+        ├── ui/
         └── utils/
             └── init.lua          # Shared utilities (map helper etc.)
 ```
