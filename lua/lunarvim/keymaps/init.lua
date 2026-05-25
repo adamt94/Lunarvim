@@ -12,7 +12,6 @@ local function register_groups()
       if not ok then return end
       wk.add({
         { "<leader>b", group = "Buffers" },
-        { "<leader>e", group = "Explorer" },
         { "<leader>f", group = "Find" },
         { "<leader>g", group = "Git" },
         { "<leader>l", group = "LSP" },
@@ -76,10 +75,10 @@ local function find()
   map("n", "<leader>fc", t("commands"),                { desc = "Commands" })
 end
 
--- Explorer / Neo-tree --
+-- Explorer / Thread sidebar --
 local function explorer()
-  map("n", "<leader>e",  "<cmd>Neotree toggle<cr>",           { desc = "Toggle explorer" })
-  map("n", "<leader>o",  "<cmd>Neotree reveal<cr>",           { desc = "Reveal file in explorer" })
+  map("n", "<leader>e", function() require("lunarvim.ui.sidebar").toggle() end, { desc = "Toggle thread sidebar" })
+  map("n", "<leader>o", function() require("lunarvim.ui.sidebar").open() end,   { desc = "Focus thread sidebar" })
 end
 
 -- Terminal / Toggleterm --
@@ -94,6 +93,11 @@ local function terminal()
   map("t", "<C-j>",      "<C-\\><C-n><C-w>j", { desc = "Terminal: move to below window" })
   map("t", "<C-k>",      "<C-\\><C-n><C-w>k", { desc = "Terminal: move to above window" })
   map("t", "<C-l>",      "<C-\\><C-n><C-w>l", { desc = "Terminal: move to right window" })
+
+  -- Jump to thread sidebar from inside any terminal (works while in insert mode)
+  map("t", "<leader>e",
+    "<C-\\><C-n><cmd>lua require('lunarvim.ui.sidebar').open()<cr>",
+    { desc = "Focus thread sidebar" })
 end
 
 -- Buffer management --
