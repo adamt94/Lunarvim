@@ -30,12 +30,10 @@ function M.recent(n)
 end
 
 -- Returns threads grouped by project folder, each group sorted most-recent first.
--- Result is an array: { { project = "/path", threads = {...} }, ... }
--- sorted by the most recently touched thread in each group.
 function M.get_grouped()
-  local all     = read()
-  local map     = {}  -- project -> list of threads
-  local order   = {}  -- insertion order for projects
+  local all   = read()
+  local map   = {}
+  local order = {}
 
   for _, t in ipairs(all) do
     local proj = t.project or "other"
@@ -46,7 +44,6 @@ function M.get_grouped()
     table.insert(map[proj], t)
   end
 
-  -- Sort projects by their most recent thread (all already sorted desc so [1] is latest)
   table.sort(order, function(a, b)
     return map[a][1].last_accessed > map[b][1].last_accessed
   end)
@@ -58,13 +55,17 @@ function M.get_grouped()
   return result
 end
 
-function M.new(name, ai_tool)
+-- project is optional; defaults to cwd. Auto-registers the project.
+function M.new(name, ai_tool, project)
+  project = project or vim.fn.getcwd()
+  require("lunarvim.projects").ensure(project)
+
   local all    = read()
   local thread = {
     id            = tostring(os.time()) .. tostring(math.random(1000, 9999)),
     name          = name,
     ai_tool       = ai_tool,
-    project       = vim.fn.getcwd(),
+    project       = project,
     created_at    = os.time(),
     last_accessed = os.time(),
   }
@@ -90,7 +91,8 @@ function M.delete(id)
   write(updated)
 end
 
-function M.open_terminal(ai_tool, thread_name)
+-- dir is optional; when supplied the terminal opens in that directory.
+function M.open_terminal(ai_tool, thread_name, dir)
   local tool = M.AI_TOOLS[ai_tool]
   if not tool then return end
   local ok, Terminal = pcall(function() return require("toggleterm.terminal").Terminal end)
@@ -105,23 +107,25 @@ function M.open_terminal(ai_tool, thread_name)
     float_opts    = { border = "curved" },
   }
   if tool.cmd then opts.cmd = tool.cmd end
+  if dir      then opts.dir = dir end
   Terminal:new(opts):toggle()
 end
 
--- Opens the thread picker (used from keymaps and dashboard).
-function M.launch(ai_tool, callback)
+-- project is optional override (e.g. from sidebar project header).
+-- callback receives the created thread object.
+function M.launch(ai_tool, callback, project)
   local tool = M.AI_TOOLS[ai_tool]
   if not tool then return end
   local default = tool.label .. " — " .. os.date("%b %d, %H:%M")
   vim.ui.input({ prompt = "Thread name: ", default = default }, function(name)
     if not name or name == "" then return end
-    local thread = M.new(name, ai_tool)
-    M.open_terminal(ai_tool, name)
+    local thread = M.new(name, ai_tool, project)
+    M.open_terminal(ai_tool, name, project)
     if callback then callback(thread) end
   end)
 end
 
--- Fuzzy picker over all saved threads (used from <leader>ar and dashboard).
+-- Fuzzy picker over all saved threads.
 function M.pick()
   local all = read()
   if #all == 0 then
@@ -146,7 +150,7 @@ function M.pick()
       if t.id == choice.thread.id then t.last_accessed = os.time(); break end
     end
     write(threads)
-    M.open_terminal(choice.thread.ai_tool, choice.thread.name)
+    M.open_terminal(choice.thread.ai_tool, choice.thread.name, choice.thread.project)
   end)
 end
 

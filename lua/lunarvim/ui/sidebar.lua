@@ -3,10 +3,10 @@ local M = {}
 local WIDTH = 40
 
 local state = {
-  buf        = nil,   -- scratch buffer handle (reused across open/close)
-  win        = nil,   -- window handle (nil when closed)
-  thread_map = {},    -- line_nr (1-indexed) -> thread object
-  active_id  = nil,   -- id of the thread whose terminal is currently open
+  buf       = nil,
+  win       = nil,
+  line_map  = {},   -- lnr -> { type = "thread"|"project"|"empty", data = ... }
+  active_id = nil,
 }
 
 -- ── Highlights ────────────────────────────────────────────────────────────────
@@ -32,22 +32,46 @@ local function time_ago(ts)
   return math.floor(d / 86400) .. "d"
 end
 
+-- Builds the unified project list: all explicitly added projects merged with
+-- projects inferred from threads, sorted by most-recent activity descending.
+local function get_all_projects()
+  local threads_mod  = require("lunarvim.threads")
+  local projects_mod = require("lunarvim.projects")
+
+  local map = {}  -- path -> { path, threads, last_active }
+
+  for _, p in ipairs(projects_mod.list()) do
+    map[p.path] = { path = p.path, threads = {}, last_active = p.added_at }
+  end
+
+  for _, g in ipairs(threads_mod.get_grouped()) do
+    if not map[g.project] then
+      map[g.project] = { path = g.project, threads = {}, last_active = 0 }
+    end
+    map[g.project].threads     = g.threads
+    map[g.project].last_active = g.threads[1].last_accessed
+  end
+
+  local result = {}
+  for _, p in pairs(map) do table.insert(result, p) end
+  table.sort(result, function(a, b) return a.last_active > b.last_active end)
+  return result
+end
+
 -- ── Renderer ──────────────────────────────────────────────────────────────────
 
 local function render()
-  local threads = require("lunarvim.threads")
-  local grouped = threads.get_grouped()
-  local SEP     = "  " .. string.rep("─", WIDTH - 4)
+  local threads_mod = require("lunarvim.threads")
+  local projects    = get_all_projects()
+  local SEP         = "  " .. string.rep("─", WIDTH - 4)
 
-  local lines      = {}
-  local thread_map = {}
-  local hls        = {}  -- { lnr, col_start, col_end, hl_group }
+  local lines    = {}
+  local line_map = {}
+  local hls      = {}
 
   local function push(line, hl, col_s, col_e)
     lines[#lines + 1] = line
-    if hl then
-      hls[#hls + 1] = { #lines, col_s or 0, col_e or -1, hl }
-    end
+    if hl then hls[#hls + 1] = { #lines, col_s or 0, col_e or -1, hl } end
     return #lines
   end
 
@@ -55,63 +79,65 @@ local function render()
   push("  THREADS", "LvimThreadsHeader")
   push(SEP, "LvimThreadsSep")
 
-  if #grouped == 0 then
+  if #projects == 0 then
     push("")
-    push("  No threads yet.", "LvimThreadsMuted")
-    push("  Press n to start one.", "LvimThreadsMuted")
+    push("  No projects yet.", "LvimThreadsMuted")
+    push("  Press p to add one.", "LvimThreadsMuted")
     push("")
   else
-    for _, group in ipairs(grouped) do
+    for _, proj in ipairs(projects) do
       push("")
-      local short = vim.fn.fnamemodify(group.project, ":~")
-      push("  " .. short, "LvimThreadsProject")
+      local short = vim.fn.fnamemodify(proj.path, ":~")
+      -- Truncate long paths
+      if #short > WIDTH - 4 then short = "…" .. short:sub(-(WIDTH - 5)) end
+      local header_lnr          = push("  " .. short, "LvimThreadsProject")
+      line_map[header_lnr]      = { type = "project", data = proj }
 
-      for _, t in ipairs(group.threads) do
-        local tool   = threads.AI_TOOLS[t.ai_tool] or { icon = "?" }
-        local active = (state.active_id == t.id) and "●" or " "
-        local ts     = time_ago(t.last_accessed)
+      if #proj.threads == 0 then
+        local lnr            = push("    no threads — n to start one", "LvimThreadsMuted")
+        line_map[lnr]        = { type = "empty", data = proj }
+      else
+        for _, t in ipairs(proj.threads) do
+          local tool   = threads_mod.AI_TOOLS[t.ai_tool] or { icon = "?" }
+          local active = (state.active_id == t.id) and "●" or " "
+          local ts     = time_ago(t.last_accessed)
 
-        -- Budget: 2 indent + 1 active + 1 space + icon(varies) + 2 space + name + pad + ts
-        -- Keep it simple: fixed columns
-        local name_budget = WIDTH - 10 - #ts
-        local name = t.name
-        if #name > name_budget then name = name:sub(1, name_budget - 1) .. "…" end
-        local pad  = name_budget - #name
+          local name_budget = WIDTH - 10 - #ts
+          local name        = t.name
+          if #name > name_budget then name = name:sub(1, name_budget - 1) .. "…" end
+          local pad = name_budget - #name
 
-        local line = string.format("  %s %s  %s%s %s",
-          active, tool.icon, name, string.rep(" ", pad), ts)
+          local line       = string.format("  %s %s  %s%s %s",
+            active, tool.icon, name, string.rep(" ", pad), ts)
+          local lnr        = push(line)
+          line_map[lnr]    = { type = "thread", data = t }
 
-        local lnr       = push(line)
-        thread_map[lnr] = t
-
-        if active == "●" then hls[#hls + 1] = { lnr, 2, 3, "LvimThreadsActive" } end
-        -- Dim the timestamp (rightmost #ts chars)
-        local ts_start = #line - #ts
-        hls[#hls + 1] = { lnr, ts_start, -1, "LvimThreadsTime" }
+          if active == "●" then hls[#hls + 1] = { lnr, 2, 3, "LvimThreadsActive" } end
+          hls[#hls + 1] = { lnr, #line - #ts, -1, "LvimThreadsTime" }
+        end
       end
     end
   end
 
   push("")
   push(SEP, "LvimThreadsSep")
-  push("  n new · <CR> open · r rename · d del", "LvimThreadsHint")
+  push("  p add proj  ·  n new  ·  <CR> open  ·  d del", "LvimThreadsHint")
   push("")
 
-  return lines, thread_map, hls
+  return lines, line_map, hls
 end
 
 local function apply_highlights(hls)
   vim.api.nvim_buf_clear_namespace(state.buf, NS, 0, -1)
   for _, h in ipairs(hls) do
-    -- h = { lnr (1-indexed), col_start, col_end, hl_group }
     vim.api.nvim_buf_add_highlight(state.buf, NS, h[4], h[1] - 1, h[2], h[3])
   end
 end
 
 local function refresh()
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-  local lines, thread_map, hls = render()
-  state.thread_map = thread_map
+  local lines, line_map, hls = render()
+  state.line_map = line_map
   vim.bo[state.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
   vim.bo[state.buf].modifiable = false
@@ -120,23 +146,32 @@ end
 
 -- ── Cursor helpers ────────────────────────────────────────────────────────────
 
-local function thread_at_cursor()
+local function entry_at_cursor()
   if not state.win or not vim.api.nvim_win_is_valid(state.win) then return nil end
-  local row = vim.api.nvim_win_get_cursor(state.win)[1]
-  return state.thread_map[row]
+  return state.line_map[vim.api.nvim_win_get_cursor(state.win)[1]]
+end
+
+-- Returns the project path relevant to the cursor position:
+-- project header → that project, thread row → thread's project, else nil.
+local function project_at_cursor()
+  local e = entry_at_cursor()
+  if not e then return nil end
+  if e.type == "project" or e.type == "empty" then return e.data.path end
+  if e.type == "thread"                        then return e.data.project end
 end
 
 -- ── Actions ───────────────────────────────────────────────────────────────────
 
 function M.action_open()
-  local t = thread_at_cursor()
-  if not t then return end
-  state.active_id = t.id
+  local e = entry_at_cursor()
+  if not e or e.type ~= "thread" then return end
+  state.active_id = e.data.id
   refresh()
-  require("lunarvim.threads").open_terminal(t.ai_tool, t.name)
+  require("lunarvim.threads").open_terminal(e.data.ai_tool, e.data.name, e.data.project)
 end
 
 function M.action_new()
+  local proj    = project_at_cursor()
   local threads = require("lunarvim.threads")
   local tools   = {
     { key = "claude",   label = threads.AI_TOOLS.claude.icon   .. "  Claude Code" },
@@ -151,30 +186,61 @@ function M.action_new()
     threads.launch(choice.key, function(thread)
       state.active_id = thread.id
       refresh()
-    end)
+    end, proj)
   end)
 end
 
-function M.action_rename()
-  local t = thread_at_cursor()
-  if not t then return end
-  vim.ui.input({ prompt = "Rename: ", default = t.name }, function(name)
-    if not name or name == "" then return end
-    require("lunarvim.threads").rename(t.id, name)
+function M.action_add_project()
+  vim.ui.input({
+    prompt     = "Add project: ",
+    default    = vim.fn.getcwd(),
+    completion = "dir",
+  }, function(path)
+    if not path or path == "" then return end
+    path = vim.fn.fnamemodify(path, ":p"):gsub("/+$", "")
+    if vim.fn.isdirectory(path) == 0 then
+      vim.notify("Not a directory: " .. path, vim.log.levels.WARN)
+      return
+    end
+    require("lunarvim.projects").add(path)
     refresh()
   end)
 end
 
-function M.action_delete()
-  local t = thread_at_cursor()
-  if not t then return end
-  vim.ui.input({ prompt = 'Delete "' .. t.name .. '"? (y/N): ' }, function(input)
-    if input and input:lower() == "y" then
-      require("lunarvim.threads").delete(t.id)
-      if state.active_id == t.id then state.active_id = nil end
-      refresh()
-    end
+function M.action_rename()
+  local e = entry_at_cursor()
+  if not e or e.type ~= "thread" then return end
+  vim.ui.input({ prompt = "Rename: ", default = e.data.name }, function(name)
+    if not name or name == "" then return end
+    require("lunarvim.threads").rename(e.data.id, name)
+    refresh()
   end)
+end
+
+-- d is context-aware: deletes a thread or removes a project from the sidebar.
+function M.action_delete()
+  local e = entry_at_cursor()
+  if not e then return end
+
+  if e.type == "thread" then
+    local t = e.data
+    vim.ui.input({ prompt = 'Delete "' .. t.name .. '"? (y/N): ' }, function(inp)
+      if inp and inp:lower() == "y" then
+        require("lunarvim.threads").delete(t.id)
+        if state.active_id == t.id then state.active_id = nil end
+        refresh()
+      end
+    end)
+
+  elseif e.type == "project" or e.type == "empty" then
+    local short = vim.fn.fnamemodify(e.data.path, ":~")
+    vim.ui.input({ prompt = 'Remove "' .. short .. '" from sidebar? (y/N): ' }, function(inp)
+      if inp and inp:lower() == "y" then
+        require("lunarvim.projects").remove(e.data.path)
+        refresh()
+      end
+    end)
+  end
 end
 
 -- ── Buffer setup ──────────────────────────────────────────────────────────────
@@ -194,13 +260,14 @@ local function set_keymaps(buf)
     vim.keymap.set("n", lhs, fn,
       { buffer = buf, silent = true, nowait = true, desc = desc })
   end
-  map("<CR>",  M.action_open,   "Open thread")
-  map("o",     M.action_open,   "Open thread")
-  map("n",     M.action_new,    "New thread")
-  map("r",     M.action_rename, "Rename thread")
-  map("d",     M.action_delete, "Delete thread")
-  map("q",     M.close,         "Close sidebar")
-  map("<Esc>", M.close,         "Close sidebar")
+  map("<CR>",  M.action_open,        "Open thread")
+  map("o",     M.action_open,        "Open thread")
+  map("n",     M.action_new,         "New thread")
+  map("p",     M.action_add_project, "Add project")
+  map("r",     M.action_rename,      "Rename thread")
+  map("d",     M.action_delete,      "Delete thread / remove project")
+  map("q",     M.close,              "Close sidebar")
+  map("<Esc>", M.close,              "Close sidebar")
 end
 
 -- ── Window management ─────────────────────────────────────────────────────────
@@ -222,7 +289,6 @@ function M.open()
     set_keymaps(state.buf)
   end
 
-  -- Left vertical split
   vim.cmd("topleft " .. WIDTH .. "vsplit")
   state.win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.win, state.buf)
@@ -235,7 +301,6 @@ function M.open()
   wo.cursorline     = true
   wo.winfixwidth    = true
 
-  -- Detect manual close (user presses :q / <C-w>c inside the panel)
   vim.api.nvim_create_autocmd("WinClosed", {
     pattern  = tostring(state.win),
     once     = true,
@@ -256,7 +321,6 @@ function M.toggle()
   if M.is_open() then M.close() else M.open() end
 end
 
--- Called by threads.launch so the active indicator updates after a terminal opens.
 function M.set_active(id)
   state.active_id = id
   if M.is_open() then refresh() end
