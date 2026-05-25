@@ -378,6 +378,15 @@ function M.open()
   })
 
   refresh()
+
+  -- Defer focus so our win wins over any WinEnter autocmds fired by other
+  -- plugins (e.g. alpha-nvim recapturing focus on the start screen).
+  local win = state.win
+  vim.schedule(function()
+    if win and vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_set_current_win(win)
+    end
+  end)
 end
 
 function M.close()
