@@ -138,19 +138,23 @@ local function render()
           line_map[lnr] = { type = "empty", data = proj }
         else
           for _, t in ipairs(proj.threads) do
-            local tool   = threads_mod.AI_TOOLS[t.ai_tool] or { icon = "?" }
+            local tool   = threads_mod.AI_TOOLS[t.ai_tool] or { icon = "?", short_label = "?" }
             local active = (state.active_id == t.id) and "●" or " "
             local ts     = time_ago(t.last_accessed)
 
             local job_id = state.term_jobs[t.id]
             local status = require("lunarvim.ai.status").for_thread(t, job_id)
 
-            -- format: " ● ◆ icon name…pad ts"
-            -- fixed display cols: 1+1+1+1+1+2(icon)+1+1 = 9
-            local name_budget = width - 9 - #ts
-            local name        = t.name
-            if #name > name_budget then name = name:sub(1, name_budget - 1) .. "…" end
-            local pad = math.max(0, name_budget - #name)
+            -- format: " ● ◆ icon Label - name…pad ts"
+            -- fixed display cols: 1+1+1+1+1+2(icon)+1 = 8, then "Label - " prefix inside name
+            local short_label  = tool.short_label or tool.label
+            local name_prefix  = short_label .. " - "
+            local name_budget  = width - 9 - #ts
+            local inner_budget = math.max(4, name_budget - #name_prefix)
+            local raw_name     = t.name
+            if #raw_name > inner_budget then raw_name = raw_name:sub(1, inner_budget - 1) .. "…" end
+            local name = name_prefix .. raw_name
+            local pad  = math.max(0, name_budget - #name)
 
             local line    = string.format(" %s %s %s %s%s %s",
               active, status.icon, tool.icon, name, string.rep(" ", pad), ts)
@@ -163,6 +167,11 @@ local function render()
             end
             local start_col, end_col = char_span(line, 3, 4)
             hls[#hls + 1] = { lnr, start_col, end_col, status.hl }
+            -- orange icon for Claude Code
+            if t.ai_tool == "claude" then
+              local ic_s, ic_e = char_span(line, 5, 6)
+              hls[#hls + 1] = { lnr, ic_s, ic_e, "LvimThreadsClaudeIcon" }
+            end
             hls[#hls + 1] = { lnr, #line - #ts, -1, "LvimThreadsTime" }
           end
         end

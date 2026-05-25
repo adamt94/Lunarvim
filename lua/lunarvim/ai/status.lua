@@ -28,11 +28,11 @@ M.states = {
 local EFFORT_ICONS = { low = "▁", medium = "▄", high = "█", max = "▇" }
 
 local MODEL_SHORT = {
-  ["claude-opus-4-7"]           = "opus",
-  ["claude-opus-4-6"]           = "opus",
-  ["claude-sonnet-4-6"]         = "sonnet",
-  ["claude-haiku-4-5-20251001"] = "haiku",
-  ["claude-haiku-4-5"]          = "haiku",
+  ["claude-opus-4-7"]           = "opus 4.7",
+  ["claude-opus-4-6"]           = "opus 4.6",
+  ["claude-sonnet-4-6"]         = "sonnet 4.6",
+  ["claude-haiku-4-5-20251001"] = "haiku 4.5",
+  ["claude-haiku-4-5"]          = "haiku 4.5",
   ["gpt-5.5"]                   = "gpt-5.5",
   ["gpt-5"]                     = "gpt-5",
 }
@@ -238,12 +238,13 @@ local function provider_meta(thread)
 end
 
 function M.setup_highlights()
-  vim.api.nvim_set_hl(0, "LvimThreadsBusy",    { fg = M.colors.yellow,  default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsDone",    { fg = M.colors.green,   default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsIdle",    { fg = M.colors.blue,    default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsRunning", { fg = M.colors.mauve,   default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsStopped", { fg = M.colors.red,     default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsUnknown", { fg = M.colors.overlay, default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsBusy",       { fg = M.colors.yellow,  default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsDone",        { fg = M.colors.green,   default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsIdle",        { fg = M.colors.blue,    default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsRunning",     { fg = M.colors.mauve,   default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsStopped",     { fg = M.colors.red,     default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsUnknown",     { fg = M.colors.overlay, default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsClaudeIcon",  { fg = M.colors.peach,   default = true })
 end
 
 function M.for_thread(thread, job_id)
