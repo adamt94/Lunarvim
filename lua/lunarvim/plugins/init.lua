@@ -1,6 +1,14 @@
 local M = {}
 
 local specs = {
+  -- Home dashboard
+  {
+    "goolord/alpha-nvim",
+    event        = "VimEnter",
+    dependencies = { "nvim-tree/nvim-web-devicons" },
+    config       = function() require("lunarvim.ui.dashboard").setup() end,
+  },
+
   -- Colorscheme
   {
     "catppuccin/nvim",
