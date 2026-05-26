@@ -69,6 +69,26 @@ local specs = {
     opts         = function() return require("lunarvim.ui.statusline").lualine_opts() end,
   },
 
+  -- Better vim.ui.select (telescope dropdown) and vim.ui.input (floating window)
+  {
+    "stevearc/dressing.nvim",
+    event  = "VeryLazy",
+    config = function()
+      require("dressing").setup({
+        input = {
+          default_prompt = "➤ ",
+          win_options    = { winblend = 0 },
+        },
+        select = {
+          backend   = { "telescope", "builtin" },
+          -- telescope key is resolved lazily by dressing at call time
+          telescope = nil,
+          builtin   = { win_options = { winblend = 0 } },
+        },
+      })
+    end,
+  },
+
   -- Keymap hints (loaded early so group labels appear immediately)
   {
     "folke/which-key.nvim",
