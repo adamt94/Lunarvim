@@ -156,14 +156,16 @@ end
 local lazygit_term = nil
 local function git()
   map("n", "<leader>gg", function()
+    local cwd = vim.fn.getcwd()
     local Terminal = require("toggleterm.terminal").Terminal
     if not lazygit_term then
       lazygit_term = Terminal:new({
-        cmd       = "lazygit",
-        dir       = "git_dir",
-        direction = "float",
-        float_opts = { border = "rounded" },
-        on_close  = function() lazygit_term = nil end,
+        cmd        = "lazygit",
+        dir        = cwd,
+        direction  = "float",
+        float_opts = { border = "rounded", width = math.floor(vim.o.columns * 0.92), height = math.floor(vim.o.lines * 0.88) },
+        on_open    = function(term) vim.cmd("startinsert!") end,
+        on_close   = function() lazygit_term = nil end,
       })
     end
     lazygit_term:toggle()
