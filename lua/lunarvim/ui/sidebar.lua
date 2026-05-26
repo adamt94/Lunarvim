@@ -552,6 +552,15 @@ function M.action_delete_force()
   do_delete(e)
 end
 
+function M.action_commit_push()
+  local proj = project_at_cursor()
+  require("lunarvim.git.commit_push").commit_and_push(proj)
+end
+
+function M.action_set_commit_model()
+  require("lunarvim.git.commit_push").pick_model()
+end
+
 -- ── Buffer setup ──────────────────────────────────────────────────────────────
 
 local function create_buf()
@@ -584,11 +593,13 @@ local function set_keymaps(buf)
   map("a",     M.action_add_project,  "Add project")
   map("p",     M.action_add_project,  "Add project")
   map("r",     M.action_rename,       "Rename thread")
-  map("d",     M.action_delete,       "Delete (confirm)",    { nowait = false })
-  map("dd",    M.action_delete_force, "Delete (no confirm)")
-  map("<C-f>", "G",                    "Go to bottom (see hints)")
-  map("q",     M.close,               "Close sidebar")
-  map("<Esc>", M.close,               "Close sidebar")
+  map("d",     M.action_delete,           "Delete (confirm)",    { nowait = false })
+  map("dd",    M.action_delete_force,     "Delete (no confirm)")
+  map("c",     M.action_commit_push,      "Commit & push (AI message)")
+  map("C",     M.action_set_commit_model, "Set commit model")
+  map("<C-f>", "G",                       "Go to bottom (see hints)")
+  map("q",     M.close,                   "Close sidebar")
+  map("<Esc>", M.close,                   "Close sidebar")
 end
 
 -- ── Window management ─────────────────────────────────────────────────────────
