@@ -9,13 +9,9 @@ local specs = {
     config       = function() require("lunarvim.ui.dashboard").setup() end,
   },
 
-  -- Colorscheme — configured in lua/lunarvim/ui/theme.lua
-  {
-    "catppuccin/nvim",
-    name     = "catppuccin",
-    priority = 1000,
-    lazy     = false,
-  },
+  -- Colorschemes — active theme configured in lua/lunarvim/ui/theme.lua
+  { "catppuccin/nvim",              name = "catppuccin",  priority = 1000, lazy = false },
+  { "folke/tokyonight.nvim",        name = "tokyonight",  priority = 1000, lazy = false },
 
   -- Syntax / parsing
   {
