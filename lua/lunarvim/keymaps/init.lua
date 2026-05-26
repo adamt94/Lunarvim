@@ -136,6 +136,7 @@ local function ui()
   map("n", "<leader>ur", "<cmd>set relativenumber!<cr>", { desc = "Toggle relative numbers" })
   map("n", "<leader>uw", "<cmd>set wrap!<cr>",           { desc = "Toggle word wrap" })
   map("n", "<leader>us", "<cmd>set spell!<cr>",          { desc = "Toggle spell check" })
+  map("n", "<leader>ut", function() require("lunarvim.ui.theme").pick() end, { desc = "Change theme" })
 end
 
 -- AI sessions --

@@ -10,10 +10,20 @@ M.colorscheme = "catppuccin"
 M.variant     = "mocha"   -- catppuccin: "latte" | "frappe" | "macchiato" | "mocha"
                            -- tokyonight: "night" | "storm" | "moon" | "day"
 
+-- ── Available themes (shown in the <leader>ut picker) ─────────────────────────
+
+M.options = {
+  { label = "Catppuccin Mocha",      colorscheme = "catppuccin", variant = "mocha"      },
+  { label = "Catppuccin Macchiato",  colorscheme = "catppuccin", variant = "macchiato"  },
+  { label = "Catppuccin Frappe",     colorscheme = "catppuccin", variant = "frappe"     },
+  { label = "Catppuccin Latte",      colorscheme = "catppuccin", variant = "latte"      },
+  { label = "Tokyo Night",           colorscheme = "tokyonight", variant = "night"      },
+  { label = "Tokyo Night Storm",     colorscheme = "tokyonight", variant = "storm"      },
+  { label = "Tokyo Night Moon",      colorscheme = "tokyonight", variant = "moon"       },
+  { label = "Tokyo Night Day",       colorscheme = "tokyonight", variant = "day"        },
+}
+
 -- ── Per-theme palettes ────────────────────────────────────────────────────────
--- Add an entry here when you add a new colorscheme plugin.
--- Keys must match the colorscheme string (or "name-variant" for catppuccin).
--- All other themes fall back to deriving colors from highlight groups.
 
 local palettes = {
   ["catppuccin-latte"]     = { yellow = "#df8e1d", green = "#40a02b", blue = "#1e66f5", mauve = "#8839ef", red = "#d20f39", overlay = "#9ca0b0", peach = "#fe640b", surface = "#ccd0da" },
@@ -28,8 +38,6 @@ local palettes = {
   -- ["gruvbox"]        = { ... },
 }
 
--- Lualine theme names for colorschemes that ship their own.
--- Falls back to "auto" (lualine derives from your active colorscheme).
 local lualine_themes = {
   catppuccin = "catppuccin",
   tokyonight = "tokyonight",
@@ -38,6 +46,26 @@ local lualine_themes = {
   nightfox   = "nightfox",
 }
 
+-- ── Persistence ───────────────────────────────────────────────────────────────
+
+local override_path = vim.fn.stdpath("data") .. "/lunarvim/theme.json"
+
+local function save()
+  vim.fn.mkdir(vim.fn.fnamemodify(override_path, ":h"), "p")
+  vim.fn.writefile(
+    { vim.json.encode({ colorscheme = M.colorscheme, variant = M.variant }) },
+    override_path)
+end
+
+local function load_saved()
+  if vim.fn.filereadable(override_path) == 0 then return end
+  local ok, data = pcall(vim.json.decode, table.concat(vim.fn.readfile(override_path), ""))
+  if ok and data and data.colorscheme then
+    M.colorscheme = data.colorscheme
+    M.variant     = data.variant or M.variant
+  end
+end
+
 -- ── Runtime helpers ───────────────────────────────────────────────────────────
 
 local function hl_fg(name)
@@ -45,9 +73,6 @@ local function hl_fg(name)
   if ok and hl.fg then return string.format("#%06x", hl.fg) end
 end
 
--- Returns the active semantic color palette.
--- Uses a hardcoded palette when available, otherwise derives from highlights
--- so any colorscheme works without manual configuration.
 function M.colors()
   local versioned = { catppuccin = true, tokyonight = true }
   local key = versioned[M.colorscheme]
@@ -68,13 +93,11 @@ function M.colors()
   }
 end
 
--- Returns the lualine theme string.
 function M.lualine_theme()
   return lualine_themes[M.colorscheme] or "auto"
 end
 
--- Configures the colorscheme plugin and applies it.
--- Called once from plugins/init.lua after lazy has loaded.
+-- Applies the current colorscheme and saves the choice.
 function M.apply()
   if M.colorscheme == "catppuccin" then
     require("catppuccin").setup({ flavour = M.variant or "mocha" })
@@ -82,6 +105,39 @@ function M.apply()
     require("tokyonight").setup({ style = M.variant or "night" })
   end
   vim.cmd.colorscheme(M.colorscheme)
+  save()
 end
+
+-- Switch theme at runtime: update state, apply, refresh lualine.
+function M.set(colorscheme, variant)
+  M.colorscheme = colorscheme
+  M.variant     = variant
+  M.apply()
+  local ok, ll = pcall(require, "lualine")
+  if ok then ll.setup(require("lunarvim.ui.statusline").lualine_opts()) end
+end
+
+-- Open a picker to choose a theme interactively.
+function M.pick()
+  local current = M.colorscheme .. (M.variant and ("-" .. M.variant) or "")
+  local items = {}
+  for _, opt in ipairs(M.options) do
+    local key = opt.colorscheme .. "-" .. (opt.variant or "")
+    table.insert(items, {
+      opt   = opt,
+      label = (key == current and "✓ " or "  ") .. opt.label,
+    })
+  end
+  vim.ui.select(items, {
+    prompt      = "Theme",
+    format_item = function(item) return item.label end,
+  }, function(choice)
+    if not choice then return end
+    M.set(choice.opt.colorscheme, choice.opt.variant)
+  end)
+end
+
+-- Load any saved override before first apply().
+load_saved()
 
 return M
