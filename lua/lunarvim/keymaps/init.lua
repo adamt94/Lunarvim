@@ -153,37 +153,20 @@ local function ai()
 end
 
 -- Git --
+local lazygit_term = nil
 local function git()
   map("n", "<leader>gg", function()
-    local cwd = vim.fn.getcwd()
-    local buf = vim.api.nvim_create_buf(false, true)
-    local ui  = vim.api.nvim_list_uis()[1]
-    local w   = math.floor(ui.width  * 0.92)
-    local h   = math.floor(ui.height * 0.88)
-    local row = math.floor((ui.height - h) / 2)
-    local col = math.floor((ui.width  - w) / 2)
-    local win = vim.api.nvim_open_win(buf, true, {
-      relative = "editor", style = "minimal", border = "rounded",
-      width = w, height = h, row = row, col = col,
-    })
-    -- defer so the window is fully drawn before termopen runs
-    vim.schedule(function()
-      local job = vim.fn.termopen("lazygit", {
-        cwd = cwd,
-        on_exit = function()
-          vim.schedule(function()
-            if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
-            if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
-          end)
-        end,
+    local Terminal = require("toggleterm.terminal").Terminal
+    if not lazygit_term then
+      lazygit_term = Terminal:new({
+        cmd       = "lazygit",
+        dir       = "git_dir",
+        direction = "float",
+        float_opts = { border = "rounded" },
+        on_close  = function() lazygit_term = nil end,
       })
-      if not job or job <= 0 then
-        vim.notify("lazygit failed to start", vim.log.levels.ERROR)
-        vim.api.nvim_win_close(win, true)
-        return
-      end
-      vim.cmd("startinsert")
-    end)
+    end
+    lazygit_term:toggle()
   end, { desc = "Lazygit" })
 end
 
