@@ -155,6 +155,7 @@ end
 -- Git --
 local function git()
   map("n", "<leader>gg", function()
+    local cwd = vim.fn.getcwd()
     local buf = vim.api.nvim_create_buf(false, true)
     local ui  = vim.api.nvim_list_uis()[1]
     local w   = math.floor(ui.width  * 0.92)
@@ -165,14 +166,24 @@ local function git()
       relative = "editor", style = "minimal", border = "rounded",
       width = w, height = h, row = row, col = col,
     })
-    vim.api.nvim_set_current_win(win)
-    vim.fn.termopen("lazygit", {
-      on_exit = function()
-        if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
-        if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
-      end,
-    })
-    vim.cmd("startinsert")
+    -- defer so the window is fully drawn before termopen runs
+    vim.schedule(function()
+      local job = vim.fn.termopen("lazygit", {
+        cwd = cwd,
+        on_exit = function()
+          vim.schedule(function()
+            if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+            if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
+          end)
+        end,
+      })
+      if not job or job <= 0 then
+        vim.notify("lazygit failed to start", vim.log.levels.ERROR)
+        vim.api.nvim_win_close(win, true)
+        return
+      end
+      vim.cmd("startinsert")
+    end)
   end, { desc = "Lazygit" })
 end
 
