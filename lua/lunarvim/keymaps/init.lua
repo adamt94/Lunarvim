@@ -156,15 +156,28 @@ end
 local lazygit_term = nil
 local function git()
   map("n", "<leader>gg", function()
-    local cwd = vim.fn.getcwd()
+    -- use the active thread's project dir, fall back to cwd
+    local dir = vim.fn.getcwd()
+    local info = require("lunarvim.ui.sidebar").get_active_info()
+    if info then
+      local thread = require("lunarvim.threads").get(info.id)
+      if thread and thread.project and vim.fn.isdirectory(thread.project) == 1 then
+        dir = thread.project
+      end
+    end
+
     local Terminal = require("toggleterm.terminal").Terminal
+    -- recreate if dir changed since last open
+    if lazygit_term and lazygit_term.dir ~= dir then
+      lazygit_term = nil
+    end
     if not lazygit_term then
       lazygit_term = Terminal:new({
         cmd        = "lazygit",
-        dir        = cwd,
+        dir        = dir,
         direction  = "float",
         float_opts = { border = "rounded", width = math.floor(vim.o.columns * 0.92), height = math.floor(vim.o.lines * 0.88) },
-        on_open    = function(term) vim.cmd("startinsert!") end,
+        on_open    = function() vim.cmd("startinsert!") end,
         on_close   = function() lazygit_term = nil end,
       })
     end
