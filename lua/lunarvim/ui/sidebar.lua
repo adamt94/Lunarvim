@@ -17,13 +17,13 @@ local state = {
 local NS = vim.api.nvim_create_namespace("lunarvim-threads")
 
 local function setup_highlights()
-  vim.api.nvim_set_hl(0, "LvimThreadsHeader",  { link = "Title",        default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsProject", { link = "Directory",    default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsActive",  { link = "DiagnosticOk", default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsTime",    { link = "Comment",      default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsSep",     { link = "NonText",      default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsHint",    { link = "Comment",      default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsMuted",   { link = "Comment",      default = true })
+  vim.api.nvim_set_hl(0, "LvimThreadsHeader",  { link = "Title"        })
+  vim.api.nvim_set_hl(0, "LvimThreadsProject", { link = "Directory"    })
+  vim.api.nvim_set_hl(0, "LvimThreadsActive",  { link = "DiagnosticOk" })
+  vim.api.nvim_set_hl(0, "LvimThreadsTime",    { link = "Comment"      })
+  vim.api.nvim_set_hl(0, "LvimThreadsSep",     { link = "NonText"      })
+  vim.api.nvim_set_hl(0, "LvimThreadsHint",    { link = "Comment"      })
+  vim.api.nvim_set_hl(0, "LvimThreadsMuted",   { link = "Comment"      })
   require("lunarvim.ai.status").setup_highlights()
 end
 

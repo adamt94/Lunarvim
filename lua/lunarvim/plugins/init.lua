@@ -9,12 +9,12 @@ local specs = {
     config       = function() require("lunarvim.ui.dashboard").setup() end,
   },
 
-  -- Colorscheme
+  -- Colorscheme — configured in lua/lunarvim/ui/theme.lua
   {
     "catppuccin/nvim",
-    name = "catppuccin",
+    name     = "catppuccin",
     priority = 1000,
-    opts = { flavour = "mocha" },
+    lazy     = false,
   },
 
   -- Syntax / parsing
@@ -108,9 +108,10 @@ local specs = {
 }
 
 function M.load()
+  local theme = require("lunarvim.ui.theme")
   require("lazy").setup(specs, {
     defaults = { lazy = true },
-    install = { colorscheme = { "catppuccin" } },
+    install  = { colorscheme = { theme.colorscheme } },
     performance = {
       rtp = {
         disabled_plugins = {
@@ -121,7 +122,7 @@ function M.load()
     },
   })
 
-  vim.cmd.colorscheme("catppuccin")
+  theme.apply()
 end
 
 return M

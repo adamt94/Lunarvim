@@ -5,24 +5,18 @@ local CLAUDE_PROJECTS_DIR = vim.fn.expand("~/.claude/projects/")
 local CLAUDE_SETTINGS_PATH = vim.fn.expand("~/.claude/settings.json")
 local CODEX_SESSIONS_DIR = vim.fn.expand("~/.codex/sessions/")
 
-M.colors = {
-  blue    = "#89b4fa",
-  green   = "#a6e3a1",
-  mauve   = "#cba6f7",
-  overlay = "#6c7086",
-  peach   = "#fab387",
-  red     = "#f38ba8",
-  surface = "#585b70",
-  yellow  = "#f9e2af",
-}
+-- colors() delegates to the theme module so palette follows colorscheme changes
+function M.colors()
+  return require("lunarvim.ui.theme").colors()
+end
 
 M.states = {
-  busy    = { icon = "●", label = "working",  hl = "LvimThreadsBusy",    color = M.colors.yellow },
-  done    = { icon = "✓", label = "finished", hl = "LvimThreadsDone",    color = M.colors.green },
-  idle    = { icon = "◆", label = "idle",     hl = "LvimThreadsIdle",    color = M.colors.blue },
-  running = { icon = "▶", label = "running",  hl = "LvimThreadsRunning", color = M.colors.mauve },
-  stopped = { icon = "■", label = "stopped",  hl = "LvimThreadsStopped", color = M.colors.red },
-  unknown = { icon = "?", label = "unknown",  hl = "LvimThreadsUnknown", color = M.colors.overlay },
+  busy    = { icon = "●", label = "working",  hl = "LvimThreadsBusy",    color_key = "yellow"  },
+  done    = { icon = "✓", label = "finished", hl = "LvimThreadsDone",    color_key = "green"   },
+  idle    = { icon = "◆", label = "idle",     hl = "LvimThreadsIdle",    color_key = "blue"    },
+  running = { icon = "▶", label = "running",  hl = "LvimThreadsRunning", color_key = "mauve"   },
+  stopped = { icon = "■", label = "stopped",  hl = "LvimThreadsStopped", color_key = "red"     },
+  unknown = { icon = "?", label = "unknown",  hl = "LvimThreadsUnknown", color_key = "overlay" },
 }
 
 local EFFORT_ICONS = { low = "▁", medium = "▄", high = "█", max = "▇" }
@@ -238,14 +232,20 @@ local function provider_meta(thread)
 end
 
 function M.setup_highlights()
-  vim.api.nvim_set_hl(0, "LvimThreadsBusy",       { fg = M.colors.yellow,  default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsDone",        { fg = M.colors.green,   default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsIdle",        { fg = M.colors.blue,    default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsRunning",     { fg = M.colors.mauve,   default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsStopped",     { fg = M.colors.red,     default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsUnknown",     { fg = M.colors.overlay, default = true })
-  vim.api.nvim_set_hl(0, "LvimThreadsClaudeIcon",  { fg = M.colors.peach,   default = true })
+  local c = M.colors()
+  vim.api.nvim_set_hl(0, "LvimThreadsBusy",      { fg = c.yellow  })
+  vim.api.nvim_set_hl(0, "LvimThreadsDone",       { fg = c.green   })
+  vim.api.nvim_set_hl(0, "LvimThreadsIdle",       { fg = c.blue    })
+  vim.api.nvim_set_hl(0, "LvimThreadsRunning",    { fg = c.mauve   })
+  vim.api.nvim_set_hl(0, "LvimThreadsStopped",    { fg = c.red     })
+  vim.api.nvim_set_hl(0, "LvimThreadsUnknown",    { fg = c.overlay })
+  vim.api.nvim_set_hl(0, "LvimThreadsClaudeIcon", { fg = c.peach   })
 end
+
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group    = vim.api.nvim_create_augroup("LvimStatusHighlights", { clear = true }),
+  callback = M.setup_highlights,
+})
 
 function M.for_thread(thread, job_id)
   local alive = job_alive(job_id)
@@ -272,16 +272,17 @@ function M.for_thread(thread, job_id)
     end
   end
 
-  local def = M.states[state] or M.states.unknown
+  local def    = M.states[state] or M.states.unknown
   local effort = meta.effort
   if thread.ai_tool == "claude" then effort = effort or claude_settings().effortLevel end
 
   return vim.tbl_extend("force", {
-    alive = alive,
-    model = short_model(meta.model),
-    effort = effort,
-    tokens = meta.tokens,
+    alive        = alive,
+    model        = short_model(meta.model),
+    effort       = effort,
+    tokens       = meta.tokens,
     tokens_label = fmt_tokens(meta.tokens),
+    color        = M.colors()[def.color_key] or "#ffffff",
   }, def)
 end
 

@@ -1,6 +1,7 @@
 local M = {}
 
 local status = require("lunarvim.ai.status")
+local theme  = require("lunarvim.ui.theme")
 
 local function active_thread()
   local info = require("lunarvim.ui.sidebar").get_active_info()
@@ -23,7 +24,7 @@ end
 
 function M.thread_color()
   local thread, info = active_thread()
-  if not thread then return { fg = status.colors.overlay } end
+  if not thread then return { fg = theme.colors().overlay } end
   return { fg = status.for_thread(thread, info.job_id).color }
 end
 
@@ -47,9 +48,10 @@ end
 -- ── Lualine opts ──────────────────────────────────────────────────────────────
 
 function M.lualine_opts()
+  local c = theme.colors()
   return {
     options = {
-      theme                = "catppuccin",
+      theme                = theme.lualine_theme(),
       component_separators = "|",
       section_separators   = { left = "", right = "" },
       globalstatus         = true,
@@ -59,8 +61,8 @@ function M.lualine_opts()
       lualine_b = { "branch", "diff" },
       lualine_c = { { "filename", path = 1 } },
       lualine_x = {
-        { M.session_context, color = { fg = status.colors.green } },
-        { M.project_branch,  color = { fg = status.colors.mauve } },
+        { M.session_context, color = { fg = c.green } },
+        { M.project_branch,  color = { fg = c.mauve } },
       },
       lualine_y = {
         { M.thread, color = M.thread_color },
