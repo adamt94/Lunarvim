@@ -4,6 +4,8 @@ local CLAUDE_LIVE_DIR = vim.fn.expand("~/.claude/sessions/")
 local CLAUDE_PROJECTS_DIR = vim.fn.expand("~/.claude/projects/")
 local CLAUDE_SETTINGS_PATH = vim.fn.expand("~/.claude/settings.json")
 local CODEX_SESSIONS_DIR = vim.fn.expand("~/.codex/sessions/")
+local COPILOT_SESSIONS_DIR = vim.fn.expand("~/.copilot/session-state/")
+local COPILOT_CONFIG_PATH = vim.fn.expand("~/.copilot/config.json")
 
 -- colors() delegates to the theme module so palette follows colorscheme changes
 function M.colors()
@@ -35,6 +37,7 @@ local cache = {
   claude_live = nil,
   claude_live_at = 0,
   claude_settings = nil,
+  copilot_config = nil,
   codex_files = nil,
   codex_files_at = 0,
   meta = {},
@@ -138,6 +141,20 @@ local function codex_files()
   return files
 end
 
+local function copilot_config()
+  if cache.copilot_config then return cache.copilot_config end
+  cache.copilot_config = read_json(COPILOT_CONFIG_PATH) or {}
+  return cache.copilot_config
+end
+
+local function copilot_file(thread)
+  if thread.session_id then
+    local file = COPILOT_SESSIONS_DIR .. thread.session_id .. ".jsonl"
+    if vim.fn.filereadable(file) == 1 then return file end
+  end
+  return nil
+end
+
 local function find_codex_jsonl(thread)
   for _, file in ipairs(codex_files()) do
     if thread.session_id and file:find(thread.session_id, 1, true) then return file end
@@ -225,9 +242,32 @@ local function codex_meta(thread)
   return meta
 end
 
+local function copilot_meta(thread)
+  local file = copilot_file(thread)
+  if not file then return { provider = "copilot", model = copilot_config().model } end
+  local key = "copilot:" .. file .. ":" .. tostring(vim.fn.getftime(file)) .. ":" .. tostring(vim.fn.getfsize(file))
+  if cache.meta[key] then return cache.meta[key] end
+
+  local meta = { provider = "copilot", model = copilot_config().model }
+  for _, line in ipairs(read_tail(file, 300)) do
+    local data = decode_line(line)
+    if data and data.type == "assistant.turn_end" then
+      meta.stop_reason = "end_turn"
+    elseif data and data.type == "tool.execution_start" then
+      meta.stop_reason = "tool_use"
+    elseif data and (data.type == "session.error" or data.type == "abort") then
+      meta.stop_reason = "error"
+    end
+  end
+
+  cache.meta[key] = meta
+  return meta
+end
+
 local function provider_meta(thread)
   if thread.ai_tool == "claude" then return claude_meta(thread) end
   if thread.ai_tool == "codex" then return codex_meta(thread) end
+  if thread.ai_tool == "copilot" then return copilot_meta(thread) end
   return {}
 end
 
@@ -239,7 +279,8 @@ function M.setup_highlights()
   vim.api.nvim_set_hl(0, "LvimThreadsRunning",    { fg = c.mauve   })
   vim.api.nvim_set_hl(0, "LvimThreadsStopped",    { fg = c.red     })
   vim.api.nvim_set_hl(0, "LvimThreadsUnknown",    { fg = c.overlay })
-  vim.api.nvim_set_hl(0, "LvimThreadsClaudeIcon", { fg = c.peach   })
+  vim.api.nvim_set_hl(0, "LvimThreadsClaudeIcon",  { fg = c.peach   })
+  vim.api.nvim_set_hl(0, "LvimThreadsCopilotIcon", { fg = c.green   })
 end
 
 vim.api.nvim_create_autocmd("ColorScheme", {

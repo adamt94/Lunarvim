@@ -1,9 +1,10 @@
 local M = {}
 
 M.AI_TOOLS = {
-  claude   = { cmd = "claude", label = "Claude Code", short_label = "Claude",   icon = "✻" },
-  codex    = { cmd = "codex",  label = "Codex",       short_label = "Codex",    icon = "◉" },
-  terminal = { cmd = nil,      label = "Terminal",     short_label = "Terminal", icon = "$" },
+  claude   = { cmd = "claude", label = "Claude Code",         short_label = "Claude",   icon = "✻" },
+  codex    = { cmd = "codex",  label = "Codex",               short_label = "Codex",    icon = "◉" },
+  copilot  = { cmd = "copilot", label = "GitHub Copilot Chat", short_label = "Copilot", icon = "" },
+  terminal = { cmd = nil,      label = "Terminal",            short_label = "Terminal", icon = "$" },
 }
 
 local data_dir     = vim.fn.stdpath("data") .. "/lunarvim"

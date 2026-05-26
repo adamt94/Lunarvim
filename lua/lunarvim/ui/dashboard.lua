@@ -46,6 +46,8 @@ function M.setup()
       function() threads.launch_now("claude") end),
     dashboard.button("o", "   Codex          new session",
       function() threads.launch_now("codex") end),
+    dashboard.button("p", "   Copilot Chat   new session",
+      function() threads.launch_now("copilot") end),
     dashboard.button("t", "   Terminal       new session",
       function() threads.launch_now("terminal") end),
     dashboard.button("r", "   Resume         pick a thread",

@@ -171,6 +171,9 @@ local function render()
             if t.ai_tool == "claude" then
               local ic_s, ic_e = char_span(line, 5, 6)
               hls[#hls + 1] = { lnr, ic_s, ic_e, "LvimThreadsClaudeIcon" }
+            elseif t.ai_tool == "copilot" then
+              local ic_s, ic_e = char_span(line, 5, 6)
+              hls[#hls + 1] = { lnr, ic_s, ic_e, "LvimThreadsCopilotIcon" }
             end
             hls[#hls + 1] = { lnr, #line - #ts, -1, "LvimThreadsTime" }
           end
@@ -286,6 +289,34 @@ local function capture_codex_session_id(thread_id, project, started_at, attempt)
   end, 1000)
 end
 
+local function capture_copilot_session_id(thread_id, started_at, attempt)
+  attempt = attempt or 1
+  if attempt > 8 then return end
+
+  local dir = vim.fn.expand("~/.copilot/session-state/")
+  local files = vim.fn.glob(dir .. "*.jsonl", false, true)
+  table.sort(files, function(a, b) return vim.fn.getftime(a) > vim.fn.getftime(b) end)
+
+  for _, file in ipairs(files) do
+    if vim.fn.getftime(file) >= started_at - 30 then
+      local ok, lines = pcall(vim.fn.readfile, file, "", 10)
+      if ok then
+        for _, line in ipairs(lines) do
+          local ok_json, data = pcall(vim.json.decode, line)
+          if ok_json and data and data.type == "session.start" and data.data and data.data.sessionId then
+            require("lunarvim.threads").set_session_id(thread_id, data.data.sessionId)
+            return
+          end
+        end
+      end
+    end
+  end
+
+  vim.defer_fn(function()
+    capture_copilot_session_id(thread_id, started_at, attempt + 1)
+  end, 1000)
+end
+
 -- Creates a new terminal buffer for thread in win and returns the bufnr.
 -- Leaves focus in win (caller is responsible for final focus).
 local function create_term(thread, win)
@@ -311,6 +342,10 @@ local function create_term(thread, win)
       cmd = thread.session_id
         and { "claude", "--resume", thread.session_id }
         or  { "claude" }
+    elseif thread.ai_tool == "copilot" then
+      cmd = thread.session_id
+        and { "copilot", "--resume", thread.session_id }
+        or  { "copilot" }
     elseif ai_cmd then
       cmd = { ai_cmd }
     else
@@ -333,11 +368,13 @@ local function create_term(thread, win)
   vim.bo[buf].buflisted      = false
   state.term_jobs[thread.id] = job_id
 
-  -- Capture Claude session ID after start so we can resume later
+  -- Capture provider session IDs after start so saved threads can resume later.
   if thread.ai_tool == "claude" and not thread.session_id and not ssh_host then
     vim.defer_fn(function() capture_session_id(thread.id, job_id) end, 1500)
   elseif thread.ai_tool == "codex" and not thread.session_id and not ssh_host then
     vim.defer_fn(function() capture_codex_session_id(thread.id, thread.project, started_at) end, 1500)
+  elseif thread.ai_tool == "copilot" and not thread.session_id and not ssh_host then
+    vim.defer_fn(function() capture_copilot_session_id(thread.id, started_at) end, 1500)
   end
 
   vim.keymap.set("n", "<C-f>", function()
@@ -397,6 +434,7 @@ function M.action_new()
   local tools   = {
     { key = "claude",   label = threads.AI_TOOLS.claude.icon   .. "  Claude Code" },
     { key = "codex",    label = threads.AI_TOOLS.codex.icon    .. "  Codex" },
+    { key = "copilot",  label = threads.AI_TOOLS.copilot.icon  .. "  GitHub Copilot Chat" },
     { key = "terminal", label = threads.AI_TOOLS.terminal.icon .. "  Terminal" },
   }
   vim.ui.select(tools, {
