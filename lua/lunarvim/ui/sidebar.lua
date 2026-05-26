@@ -293,21 +293,17 @@ local function capture_copilot_session_id(thread_id, started_at, attempt)
   attempt = attempt or 1
   if attempt > 8 then return end
 
-  local dir = vim.fn.expand("~/.copilot/session-state/")
-  local files = vim.fn.glob(dir .. "*.jsonl", false, true)
+  -- Log files are named session-<uuid>.log and created immediately on start.
+  local log_dir = vim.fn.expand("~/.copilot/logs/")
+  local files   = vim.fn.glob(log_dir .. "session-*.log", false, true)
   table.sort(files, function(a, b) return vim.fn.getftime(a) > vim.fn.getftime(b) end)
 
   for _, file in ipairs(files) do
-    if vim.fn.getftime(file) >= started_at - 30 then
-      local ok, lines = pcall(vim.fn.readfile, file, "", 10)
-      if ok then
-        for _, line in ipairs(lines) do
-          local ok_json, data = pcall(vim.json.decode, line)
-          if ok_json and data and data.type == "session.start" and data.data and data.data.sessionId then
-            require("lunarvim.threads").set_session_id(thread_id, data.data.sessionId)
-            return
-          end
-        end
+    if vim.fn.getftime(file) >= started_at - 5 then
+      local uuid = vim.fn.fnamemodify(file, ":t"):match("^session%-([%x%-]+)%.log$")
+      if uuid then
+        require("lunarvim.threads").set_session_id(thread_id, uuid)
+        return
       end
     end
   end
@@ -515,7 +511,19 @@ local function do_delete(e)
     state.term_jobs[t.id] = nil
     refresh()
   elseif e.type == "project" or e.type == "empty" then
-    require("lunarvim.projects").remove(e.data.path)
+    local proj_path = e.data.path
+    -- clean up all threads for this project
+    for _, t in ipairs(e.data.threads or {}) do
+      require("lunarvim.threads").delete(t.id)
+      if state.active_id == t.id then state.active_id = nil end
+      local bufnr = state.term_bufs[t.id]
+      if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+      end
+      state.term_bufs[t.id] = nil
+      state.term_jobs[t.id] = nil
+    end
+    require("lunarvim.projects").remove(proj_path)
     refresh()
   end
 end
@@ -529,8 +537,10 @@ function M.action_delete()
       if inp and inp:lower() == "y" then do_delete(e) end
     end)
   elseif e.type == "project" or e.type == "empty" then
-    local short = vim.fn.fnamemodify(e.data.path, ":~")
-    vim.ui.input({ prompt = 'Remove "' .. short .. '" from sidebar? (y/N): ' }, function(inp)
+    local short      = vim.fn.fnamemodify(e.data.path, ":~")
+    local n          = #(e.data.threads or {})
+    local thread_str = n == 0 and "" or (" and " .. n .. " thread" .. (n == 1 and "" or "s"))
+    vim.ui.input({ prompt = 'Remove "' .. short .. '"' .. thread_str .. '? (y/N): ' }, function(inp)
       if inp and inp:lower() == "y" then do_delete(e) end
     end)
   end
