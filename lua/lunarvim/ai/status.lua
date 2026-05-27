@@ -13,10 +13,11 @@ function M.colors()
 end
 
 M.states = {
-  busy    = { icon = "●", label = "working",  hl = "LvimThreadsBusy",    color_key = "yellow"  },
+  busy    = { icon = "●", label = "running",  hl = "LvimThreadsBusy",    color_key = "yellow"  },
+  draft   = { icon = "○", label = "draft",    hl = "LvimThreadsDraft",   color_key = "overlay" },
   done    = { icon = "✓", label = "finished", hl = "LvimThreadsDone",    color_key = "green"   },
-  idle    = { icon = "◆", label = "idle",     hl = "LvimThreadsIdle",    color_key = "blue"    },
-  running = { icon = "▶", label = "running",  hl = "LvimThreadsRunning", color_key = "mauve"   },
+  idle    = { icon = "○", label = "waiting",  hl = "LvimThreadsIdle",    color_key = "blue"    },
+  running = { icon = "●", label = "running",  hl = "LvimThreadsRunning", color_key = "green"   },
   stopped = { icon = "■", label = "stopped",  hl = "LvimThreadsStopped", color_key = "red"     },
   unknown = { icon = "?", label = "unknown",  hl = "LvimThreadsUnknown", color_key = "overlay" },
 }
@@ -128,7 +129,9 @@ local function find_claude_jsonl(thread)
   if not dir then return nil end
   local files = vim.fn.glob(CLAUDE_PROJECTS_DIR .. dir .. "/*.jsonl", false, true)
   table.sort(files, function(a, b) return vim.fn.getftime(a) > vim.fn.getftime(b) end)
-  return files[1]
+  for _, file in ipairs(files) do
+    if not thread.created_at or vim.fn.getftime(file) >= thread.created_at - 10 then return file end
+  end
 end
 
 local function codex_files()
@@ -161,11 +164,13 @@ local function find_codex_jsonl(thread)
   end
 
   for _, file in ipairs(codex_files()) do
+    if thread.created_at and vim.fn.getftime(file) < thread.created_at - 10 then goto continue end
     for _, line in ipairs(read_tail(file, 40)) do
       local data = decode_line(line)
       local payload = data and data.payload
       if payload and payload.cwd == thread.project then return file end
     end
+    ::continue::
   end
 end
 
@@ -193,6 +198,7 @@ local function claude_meta(thread)
     if msg and msg.role == "assistant" then
       meta.model = msg.model or meta.model
       meta.stop_reason = msg.stop_reason or meta.stop_reason
+      meta.has_activity = true
       if msg.usage and msg.id and not seen[msg.id] then
         seen[msg.id] = true
         total = total + (usage_total(msg.usage) or 0)
@@ -200,6 +206,7 @@ local function claude_meta(thread)
       end
     elseif data and data.type == "last-prompt" then
       meta.last_prompt = data.lastPrompt
+      meta.has_activity = true
     end
   end
   meta.tokens = total > 0 and total or meta.last_tokens
@@ -228,12 +235,15 @@ local function codex_meta(thread)
       local usage = info.total_token_usage or {}
       meta.tokens = usage.total_tokens or meta.tokens
       meta.context_window = info.model_context_window or meta.context_window
+      meta.has_activity = true
     elseif data and data.type == "response_item" and data.payload then
       meta.last_response_type = data.payload.type or meta.last_response_type
       if data.payload.type == "message" and data.payload.role == "assistant" then
         meta.stop_reason = "end_turn"
+        meta.has_activity = true
       elseif data.payload.type == "function_call" or data.payload.type == "reasoning" then
         meta.stop_reason = "tool_use"
+        meta.has_activity = true
       end
     end
   end
@@ -253,10 +263,13 @@ local function copilot_meta(thread)
     local data = decode_line(line)
     if data and data.type == "assistant.turn_end" then
       meta.stop_reason = "end_turn"
+      meta.has_activity = true
     elseif data and data.type == "tool.execution_start" then
       meta.stop_reason = "tool_use"
+      meta.has_activity = true
     elseif data and (data.type == "session.error" or data.type == "abort") then
       meta.stop_reason = "error"
+      meta.has_activity = true
     end
   end
 
@@ -274,9 +287,10 @@ end
 function M.setup_highlights()
   local c = M.colors()
   vim.api.nvim_set_hl(0, "LvimThreadsBusy",      { fg = c.yellow  })
+  vim.api.nvim_set_hl(0, "LvimThreadsDraft",     { fg = c.overlay })
   vim.api.nvim_set_hl(0, "LvimThreadsDone",       { fg = c.green   })
   vim.api.nvim_set_hl(0, "LvimThreadsIdle",       { fg = c.blue    })
-  vim.api.nvim_set_hl(0, "LvimThreadsRunning",    { fg = c.mauve   })
+  vim.api.nvim_set_hl(0, "LvimThreadsRunning",    { fg = c.green   })
   vim.api.nvim_set_hl(0, "LvimThreadsStopped",    { fg = c.red     })
   vim.api.nvim_set_hl(0, "LvimThreadsUnknown",    { fg = c.overlay })
   vim.api.nvim_set_hl(0, "LvimThreadsClaudeIcon",  { fg = c.peach   })
@@ -292,13 +306,18 @@ function M.for_thread(thread, job_id)
   local alive = job_alive(job_id)
   local meta = provider_meta(thread)
   local state = meta.stop_reason == "end_turn" and "done" or "stopped"
+  local is_ai_thread = thread.ai_tool == "claude" or thread.ai_tool == "codex" or thread.ai_tool == "copilot"
+
+  if is_ai_thread and not meta.has_activity then
+    state = "draft"
+  end
 
   if alive then
-    state = "running"
+    state = state == "draft" and "draft" or "running"
     if thread.ai_tool == "claude" then
       for _, session in ipairs(claude_live_sessions()) do
         if session.cwd == thread.project or session.sessionId == thread.session_id then
-          state = session.status == "busy" and "busy" or "idle"
+          state = state == "draft" and "draft" or (session.status == "busy" and "busy" or "idle")
           break
         end
       end
