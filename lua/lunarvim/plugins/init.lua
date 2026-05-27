@@ -79,6 +79,22 @@ local specs = {
     },
   },
 
+  -- Better vim.ui.select / vim.ui.input (arrow-key selector, Telescope backend)
+  {
+    "stevearc/dressing.nvim",
+    event = "VeryLazy",
+    opts = {
+      select = {
+        backend = { "telescope", "builtin" },
+        telescope = require("telescope.themes").get_cursor({ initial_mode = "normal" }),
+      },
+      input = {
+        default_prompt = "  ",
+        win_options    = { winblend = 0 },
+      },
+    },
+  },
+
   -- Comment toggling: gcc (line), gc (motion/visual)
   {
     "numToStr/Comment.nvim",
