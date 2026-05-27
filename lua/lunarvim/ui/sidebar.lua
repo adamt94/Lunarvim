@@ -443,9 +443,35 @@ function M.action_new()
   end)
 end
 
+local function add_project_path(path)
+  path = path:gsub("/+$", "")
+  local ssh_host = parse_ssh(path)
+  if ssh_host then
+    require("lunarvim.projects").add(path)
+    refresh()
+  else
+    path = vim.fn.fnamemodify(path, ":p"):gsub("/+$", "")
+    if vim.fn.isdirectory(path) == 0 then
+      vim.notify("Not a directory: " .. path, vim.log.levels.WARN)
+      return
+    end
+    require("lunarvim.projects").add(path)
+    refresh()
+  end
+end
+
+local function add_project_ssh_input(default)
+  vim.ui.input({
+    prompt     = "SSH project (user@host:/path): ",
+    default    = default or "",
+    completion = "dir",
+  }, function(path)
+    if not path or path == "" then return end
+    add_project_path(path)
+  end)
+end
+
 function M.action_add_project()
-  -- Pre-fill with the parent of the current project so the user can type a sibling path.
-  -- Falls back to cwd. SSH paths are passed through without directory validation.
   local e = entry_at_cursor()
   local ctx_path
   if e then
@@ -453,35 +479,47 @@ function M.action_add_project()
                or (e.type == "thread" and e.data.project)
   end
 
-  local default
+  -- search root: parent of current project, or home
+  local search_root
   if ctx_path and not parse_ssh(ctx_path) then
-    default = vim.fn.fnamemodify(ctx_path, ":h") .. "/"
+    search_root = vim.fn.fnamemodify(ctx_path, ":h")
   else
-    default = vim.fn.getcwd() .. "/"
+    search_root = vim.fn.expand("~")
   end
 
-  vim.ui.input({
-    prompt     = "Add project (path or user@host:/path): ",
-    default    = default,
-    completion = "dir",
-  }, function(path)
-    if not path or path == "" then return end
-    path = path:gsub("/+$", "")
-    local ssh_host = parse_ssh(path)
-    if ssh_host then
-      -- Accept SSH paths as-is — can't validate remotely
-      require("lunarvim.projects").add(path)
-      refresh()
-    else
-      path = vim.fn.fnamemodify(path, ":p"):gsub("/+$", "")
-      if vim.fn.isdirectory(path) == 0 then
-        vim.notify("Not a directory: " .. path, vim.log.levels.WARN)
-        return
-      end
-      require("lunarvim.projects").add(path)
-      refresh()
-    end
-  end)
+  local pickers      = require("telescope.pickers")
+  local finders      = require("telescope.finders")
+  local conf         = require("telescope.config").values
+  local actions      = require("telescope.actions")
+  local action_state = require("telescope.actions.state")
+
+  pickers.new({}, {
+    prompt_title = "Add Project  (<C-e> for SSH path)",
+    finder = finders.new_oneshot_job({
+      "find", search_root,
+      "-maxdepth", "5",
+      "-type", "d",
+      "-not", "-path", "*/\\.git*",
+      "-not", "-path", "*/node_modules/*",
+      "-not", "-path", "*/\\.cache/*",
+    }, {}),
+    sorter = conf.generic_sorter({}),
+    attach_mappings = function(prompt_bufnr, map)
+      -- Enter: add selected directory
+      actions.select_default:replace(function()
+        local entry = action_state.get_selected_entry()
+        actions.close(prompt_bufnr)
+        if not entry then return end
+        add_project_path(entry[1])
+      end)
+      -- <C-e>: fall back to manual SSH input
+      map({ "i", "n" }, "<C-e>", function()
+        actions.close(prompt_bufnr)
+        add_project_ssh_input()
+      end)
+      return true
+    end,
+  }):find()
 end
 
 function M.action_rename()
