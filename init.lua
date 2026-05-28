@@ -10,4 +10,9 @@ if not vim.loop.fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
+-- Standalone: load options, plugins, and all editor keymaps first.
+require("lunarvim.core").setup()
+
+-- Plugin API: AI threads, configurable keymaps.
+-- AstroNvim users call only this line from their plugin spec.
 require("lunarvim").setup()

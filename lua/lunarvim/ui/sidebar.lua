@@ -1,6 +1,8 @@
 local M = {}
 
-local WIDTH = 40
+local function get_width()
+  return require("lunarvim.config").get().sidebar_width
+end
 
 local state = {
   buf       = nil,
@@ -11,6 +13,32 @@ local state = {
   term_jobs = {},   -- thread_id -> job_id (for live/dead status)
   collapsed = {},   -- project_path -> bool
 }
+
+-- ── File-tree helpers (Neo-tree / nvim-tree) ──────────────────────────────────
+
+local function is_filetree_open()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
+    if ft == "neo-tree" or ft == "NvimTree" then return true end
+  end
+  return false
+end
+
+local function close_filetree()
+  if vim.fn.exists(":Neotree") == 2 then
+    vim.cmd("Neotree close")
+  elseif vim.fn.exists(":NvimTreeClose") == 2 then
+    vim.cmd("NvimTreeClose")
+  end
+end
+
+local function open_filetree()
+  if vim.fn.exists(":Neotree") == 2 then
+    vim.cmd("Neotree")
+  elseif vim.fn.exists(":NvimTreeOpen") == 2 then
+    vim.cmd("NvimTreeOpen")
+  end
+end
 
 -- ── Highlights ────────────────────────────────────────────────────────────────
 
@@ -88,7 +116,7 @@ end
 
 local function render()
   local width       = (state.win and vim.api.nvim_win_is_valid(state.win))
-                      and vim.api.nvim_win_get_width(state.win) or WIDTH
+                      and vim.api.nvim_win_get_width(state.win) or get_width()
   local threads_mod = require("lunarvim.threads")
   local projects    = get_all_projects()
   local SEP         = string.rep("─", width - 1)
@@ -373,18 +401,28 @@ local function create_term(thread, win)
     vim.defer_fn(function() capture_copilot_session_id(thread.id, started_at) end, 1500)
   end
 
-  vim.keymap.set("n", "<C-f>", function()
-    require("lunarvim.ui.sidebar").open()
-  end, { buffer = buf, silent = true, desc = "Focus thread sidebar" })
+  local focus_key = require("lunarvim.config").get().terminal_focus_key
+  if focus_key and focus_key ~= "" then
+    vim.keymap.set("n", focus_key, function()
+      require("lunarvim.ui.sidebar").open()
+    end, { buffer = buf, silent = true, desc = "Focus thread sidebar" })
+  end
 
   return buf
 end
 
 -- Opens thread's terminal in the main content window.
--- Ensures the sidebar is open, creates the main window if missing,
--- reuses an existing terminal buffer if one exists for this thread.
+-- If a sidebar (threads or filetree) was already visible, ensures the threads
+-- sidebar is shown beside the terminal. If nothing was open, terminal is full screen.
 function M.open_thread(thread)
-  if not M.is_open() then M.open() end
+  local filetree_was_open = is_filetree_open()
+  local sidebar_was_open  = M.is_open()
+
+  if filetree_was_open then close_filetree() end
+
+  if (filetree_was_open or sidebar_was_open) and not M.is_open() then
+    M.open()
+  end
 
   -- Re-fetch from disk so we always have the latest session_id
   local fresh = require("lunarvim.threads").get(thread.id)
@@ -479,7 +517,6 @@ function M.action_add_project()
                or (e.type == "thread" and e.data.project)
   end
 
-  -- search root: parent of current project, or home
   local search_root
   if ctx_path and not parse_ssh(ctx_path) then
     search_root = vim.fn.fnamemodify(ctx_path, ":h")
@@ -487,39 +524,45 @@ function M.action_add_project()
     search_root = vim.fn.expand("~")
   end
 
-  local pickers      = require("telescope.pickers")
-  local finders      = require("telescope.finders")
-  local conf         = require("telescope.config").values
-  local actions      = require("telescope.actions")
-  local action_state = require("telescope.actions.state")
+  local ok_telescope = pcall(require, "telescope.pickers")
+  if ok_telescope then
+    local pickers      = require("telescope.pickers")
+    local finders      = require("telescope.finders")
+    local conf         = require("telescope.config").values
+    local actions      = require("telescope.actions")
+    local action_state = require("telescope.actions.state")
 
-  pickers.new({}, {
-    prompt_title = "Add Project  (<C-e> for SSH path)",
-    finder = finders.new_oneshot_job({
-      "find", search_root,
-      "-maxdepth", "5",
-      "-type", "d",
-      "-not", "-path", "*/\\.git*",
-      "-not", "-path", "*/node_modules/*",
-      "-not", "-path", "*/\\.cache/*",
-    }, {}),
-    sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr, map)
-      -- Enter: add selected directory
-      actions.select_default:replace(function()
-        local entry = action_state.get_selected_entry()
-        actions.close(prompt_bufnr)
-        if not entry then return end
-        add_project_path(entry[1])
-      end)
-      -- <C-e>: fall back to manual SSH input
-      map({ "i", "n" }, "<C-e>", function()
-        actions.close(prompt_bufnr)
-        add_project_ssh_input()
-      end)
-      return true
-    end,
-  }):find()
+    pickers.new({}, {
+      prompt_title = "Add Project  (<C-e> for SSH path)",
+      finder = finders.new_oneshot_job({
+        "find", search_root,
+        "-maxdepth", "5",
+        "-type", "d",
+        "-not", "-path", "*/\\.git*",
+        "-not", "-path", "*/node_modules/*",
+        "-not", "-path", "*/\\.cache/*",
+      }, {}),
+      sorter = conf.generic_sorter({}),
+      attach_mappings = function(prompt_bufnr, map)
+        actions.select_default:replace(function()
+          local entry = action_state.get_selected_entry()
+          actions.close(prompt_bufnr)
+          if not entry then return end
+          add_project_path(entry[1])
+        end)
+        map({ "i", "n" }, "<C-e>", function()
+          actions.close(prompt_bufnr)
+          add_project_ssh_input()
+        end)
+        return true
+      end,
+    }):find()
+  else
+    vim.ui.input({ prompt = "Project path (or user@host:/path): " }, function(path)
+      if not path or path == "" then return end
+      add_project_path(path)
+    end)
+  end
 end
 
 function M.action_rename()
@@ -648,7 +691,7 @@ function M.open()
     set_keymaps(state.buf)
   end
 
-  vim.cmd("topleft " .. WIDTH .. "vsplit")
+  vim.cmd("topleft " .. get_width() .. "vsplit")
   state.win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.win, state.buf)
 
@@ -699,6 +742,20 @@ end
 
 function M.toggle()
   if M.is_open() then M.close() else M.open() end
+end
+
+-- Swap the left slot between the threads sidebar and the file tree.
+-- Keeps whatever is in the main window (code or AI terminal) untouched.
+function M.swap_sidebar()
+  if M.is_open() then
+    M.close()
+    open_filetree()
+  elseif is_filetree_open() then
+    close_filetree()
+    M.open()
+  else
+    M.open()
+  end
 end
 
 function M.set_active(id)
