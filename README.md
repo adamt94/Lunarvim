@@ -91,6 +91,7 @@ Press `<Space>` and wait — the which-key popup should appear showing all avail
 | `<leader>at` | New terminal session |
 | `<leader>ar` | Resume thread (pick from list) |
 | `<leader>ah` | Home dashboard |
+| `<leader>gg` | Lazygit for active thread project / current repo |
 
 ### Terminal
 
@@ -130,6 +131,8 @@ Press `<Space>` and wait — the which-key popup should appear showing all avail
 Lunarvim doesn't lock you into an AI provider. The idea is simple: use your terminal.
 
 Open a floating or split terminal with `<leader>tf`, launch whatever AI tool you prefer — `claude`, `codex`, Gemini CLI, anything — and work alongside it. The `ai/` module in the codebase is where context management lives: it tracks your open buffers, visual selections, and (eventually) named conversation threads so they can be piped directly into terminal sessions without copy-pasting.
+
+The thread sidebar also acts as a project launcher: press `g` on a project or thread row to open lazygit for that project. `:LunarvimLazyGitProjects` opens the same workflow from a picker.
 
 This keeps the editor lean and you in control of which AI you're using.
 

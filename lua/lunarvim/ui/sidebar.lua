@@ -462,6 +462,15 @@ function M.action_open()
   M.open_thread(e.data)
 end
 
+function M.action_lazygit()
+  local project = project_at_cursor()
+  if not project then
+    vim.notify("No project under cursor.", vim.log.levels.INFO)
+    return
+  end
+  require("lunarvim.git").lazygit({ dir = project })
+end
+
 function M.action_new()
   local proj    = project_at_cursor()
   local threads = require("lunarvim.threads")
@@ -661,6 +670,7 @@ local function set_keymaps(buf)
     end
   end, "Open thread / toggle project collapse")
   map("o", M.action_open, "Open thread")
+  map("g",     M.action_lazygit,      "Lazygit for project")
   map("n",     M.action_new,          "New thread")
   map("a",     M.action_add_project,  "Add project")
   map("p",     M.action_add_project,  "Add project")

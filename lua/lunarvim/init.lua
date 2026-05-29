@@ -6,6 +6,7 @@ function M.setup(opts)
   local cfg = require("lunarvim.config").set(opts)
   require("lunarvim.ai").setup()
   require("lunarvim.keymaps.ai").setup(cfg)
+  require("lunarvim.git").setup(cfg)
 end
 
 return M

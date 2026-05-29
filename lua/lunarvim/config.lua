@@ -5,6 +5,11 @@ local defaults = {
   sidebar_width      = 40,
   terminal_focus_key = "<C-f>",
   which_key_label    = "AI Threads",
+  lazygit = {
+    enabled                   = true,
+    keymap                    = "<leader>gg",
+    use_active_thread_project = true,
+  },
   keys = {
     toggle   = "s",
     new      = "n",

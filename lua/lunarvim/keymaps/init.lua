@@ -112,43 +112,6 @@ local function ui()
   map("n", "<leader>ut", function() require("lunarvim.ui.theme").pick() end, { desc = "Change theme" })
 end
 
-local function git()
-  local lazygit_term = nil
-  map("n", "<leader>gg", function()
-    local ok, toggleterm = pcall(require, "toggleterm.terminal")
-    if not ok then
-      vim.notify("Install toggleterm.nvim for lazygit support", vim.log.levels.WARN)
-      return
-    end
-
-    local dir  = vim.fn.getcwd()
-    local info = require("lunarvim.ui.sidebar").get_active_info()
-    if info then
-      local thread = require("lunarvim.threads").get(info.id)
-      if thread and thread.project and vim.fn.isdirectory(thread.project) == 1 then
-        dir = thread.project
-      end
-    end
-
-    if lazygit_term and lazygit_term.dir ~= dir then lazygit_term = nil end
-    if not lazygit_term then
-      lazygit_term = toggleterm.Terminal:new({
-        cmd        = "lazygit",
-        dir        = dir,
-        direction  = "float",
-        float_opts = {
-          border = "rounded",
-          width  = math.floor(vim.o.columns * 0.92),
-          height = math.floor(vim.o.lines * 0.88),
-        },
-        on_open  = function() vim.cmd("startinsert!") end,
-        on_close = function() lazygit_term = nil end,
-      })
-    end
-    lazygit_term:toggle()
-  end, { desc = "Lazygit" })
-end
-
 local function quit()
   map("n", "<leader>q", "<cmd>confirm q<cr>",  { desc = "Quit" })
   map("n", "<leader>Q", "<cmd>confirm qa<cr>", { desc = "Quit all" })
@@ -169,7 +132,6 @@ function M.setup()
   buffers()
   windows()
   ui()
-  git()
   quit()
   standalone()
 end
