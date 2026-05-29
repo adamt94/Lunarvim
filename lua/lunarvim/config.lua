@@ -7,7 +7,7 @@ local defaults = {
   which_key_label    = "AI Threads",
   lazygit = {
     enabled                   = true,
-    keymap                    = "<leader>gg",
+    keymap                    = nil,
     use_active_thread_project = true,
   },
   keys = {

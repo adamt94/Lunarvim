@@ -15,4 +15,8 @@ require("lunarvim.core").setup()
 
 -- Plugin API: AI threads, configurable keymaps.
 -- AstroNvim users call only this line from their plugin spec.
-require("lunarvim").setup()
+require("lunarvim").setup({
+  lazygit = {
+    keymap = "<leader>gg",
+  },
+})
