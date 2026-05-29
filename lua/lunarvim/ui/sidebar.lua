@@ -1,7 +1,8 @@
 local M = {}
 
 local function get_width()
-  return require("lunarvim.config").get().sidebar_width
+  local width = require("lunarvim.config").get().sidebar_width
+  return math.max(1, math.min(width, vim.o.columns - 1))
 end
 
 local state = {
@@ -12,7 +13,6 @@ local state = {
   term_bufs     = {},   -- thread_id -> terminal bufnr (in-memory, resets on restart)
   term_jobs     = {},   -- thread_id -> job_id (for live/dead status)
   collapsed     = {},   -- project_path -> bool
-  sidebar_width = nil,
 }
 
 local restore_sidebar_width
@@ -693,7 +693,7 @@ end
 -- ── Window management ─────────────────────────────────────────────────────────
 
 local function current_sidebar_width()
-  return state.sidebar_width or get_width()
+  return get_width()
 end
 
 local function real_windows()
@@ -711,18 +711,8 @@ restore_sidebar_width = function()
     vim.wo[state.win].winfixwidth = true
     if vim.api.nvim_win_get_width(state.win) ~= width then
       pcall(vim.api.nvim_win_set_width, state.win, width)
+      refresh()
     end
-  end)
-end
-
-local function remember_sidebar_width()
-  vim.schedule(function()
-    if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
-    if #real_windows() <= 1 then return end
-
-    local width = vim.api.nvim_win_get_width(state.win)
-    local max_sidebar_width = math.min(80, math.floor(vim.o.columns * 0.45))
-    if width <= max_sidebar_width then state.sidebar_width = width end
   end)
 end
 
@@ -789,13 +779,6 @@ function M.open()
   vim.api.nvim_create_autocmd("WinEnter", {
     buffer   = state.buf,
     callback = function() cursor_to_active() end,
-  })
-
-  vim.api.nvim_create_autocmd("WinResized", {
-    callback = function()
-      remember_sidebar_width()
-      if state.win and vim.api.nvim_win_is_valid(state.win) then refresh() end
-    end,
   })
 
   refresh()
