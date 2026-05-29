@@ -5,14 +5,18 @@ local function get_width()
 end
 
 local state = {
-  buf       = nil,
-  win       = nil,
-  line_map  = {},   -- lnr -> { type = "thread"|"project"|"empty", data = ... }
-  active_id = nil,
-  term_bufs = {},   -- thread_id -> terminal bufnr (in-memory, resets on restart)
-  term_jobs = {},   -- thread_id -> job_id (for live/dead status)
-  collapsed = {},   -- project_path -> bool
+  buf           = nil,
+  win           = nil,
+  line_map      = {},   -- lnr -> { type = "thread"|"project"|"empty", data = ... }
+  active_id     = nil,
+  term_bufs     = {},   -- thread_id -> terminal bufnr (in-memory, resets on restart)
+  term_jobs     = {},   -- thread_id -> job_id (for live/dead status)
+  collapsed     = {},   -- project_path -> bool
+  sidebar_width = nil,
 }
+
+local restore_sidebar_width
+local scroll_terminal_to_bottom
 
 -- ── File-tree helpers (Neo-tree / nvim-tree) ──────────────────────────────────
 
@@ -390,6 +394,7 @@ local function create_term(thread, win)
 
   pcall(vim.api.nvim_buf_set_name, buf, thread.name)
   vim.bo[buf].buflisted      = false
+  vim.b[buf].lunarvim_threads_terminal = true
   state.term_jobs[thread.id] = job_id
 
   -- Capture provider session IDs after start so saved threads can resume later.
@@ -450,6 +455,9 @@ function M.open_thread(thread)
     bufnr = create_term(thread, main_win)
     if bufnr then state.term_bufs[thread.id] = bufnr end
   end
+
+  if bufnr then scroll_terminal_to_bottom(bufnr) end
+  restore_sidebar_width()
 
   vim.schedule(function() vim.cmd("startinsert") end)
 end
@@ -684,6 +692,65 @@ end
 
 -- ── Window management ─────────────────────────────────────────────────────────
 
+local function current_sidebar_width()
+  return state.sidebar_width or get_width()
+end
+
+local function real_windows()
+  return vim.tbl_filter(function(win)
+    return vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative == ""
+  end, vim.api.nvim_tabpage_list_wins(0))
+end
+
+restore_sidebar_width = function()
+  vim.schedule(function()
+    if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
+    if #real_windows() <= 1 then return end
+
+    local width = current_sidebar_width()
+    vim.wo[state.win].winfixwidth = true
+    if vim.api.nvim_win_get_width(state.win) ~= width then
+      pcall(vim.api.nvim_win_set_width, state.win, width)
+    end
+  end)
+end
+
+local function remember_sidebar_width()
+  vim.schedule(function()
+    if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
+    if #real_windows() <= 1 then return end
+
+    local width = vim.api.nvim_win_get_width(state.win)
+    local max_sidebar_width = math.min(80, math.floor(vim.o.columns * 0.45))
+    if width <= max_sidebar_width then state.sidebar_width = width end
+  end)
+end
+
+scroll_terminal_to_bottom = function(buf)
+  if not vim.api.nvim_buf_is_valid(buf) or not vim.b[buf].lunarvim_threads_terminal then return end
+
+  vim.schedule(function()
+    if not vim.api.nvim_buf_is_valid(buf) then return end
+
+    local last_line = math.max(1, vim.api.nvim_buf_line_count(buf))
+    for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+      if vim.api.nvim_win_is_valid(win) then
+        pcall(vim.api.nvim_win_set_cursor, win, { last_line, 0 })
+      end
+    end
+  end)
+end
+
+vim.api.nvim_create_autocmd({ "BufWinEnter", "WinNew", "WinClosed", "VimResized" }, {
+  group = vim.api.nvim_create_augroup("lunarvim_threads_layout", { clear = true }),
+  callback = restore_sidebar_width,
+})
+
+vim.api.nvim_create_autocmd({ "TermEnter", "BufEnter", "TextChangedT" }, {
+  group = vim.api.nvim_create_augroup("lunarvim_threads_terminal_scroll", { clear = true }),
+  callback = function(args) scroll_terminal_to_bottom(args.buf) end,
+})
+
 function M.is_open()
   return state.win ~= nil and vim.api.nvim_win_is_valid(state.win)
 end
@@ -701,7 +768,7 @@ function M.open()
     set_keymaps(state.buf)
   end
 
-  vim.cmd("topleft " .. get_width() .. "vsplit")
+  vim.cmd("topleft " .. current_sidebar_width() .. "vsplit")
   state.win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.win, state.buf)
 
@@ -726,6 +793,7 @@ function M.open()
 
   vim.api.nvim_create_autocmd("WinResized", {
     callback = function()
+      remember_sidebar_width()
       if state.win and vim.api.nvim_win_is_valid(state.win) then refresh() end
     end,
   })
