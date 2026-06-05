@@ -446,18 +446,18 @@ end
 local function add_project_path(path)
   path = path:gsub("/+$", "")
   local ssh_host = parse_ssh(path)
-  if ssh_host then
-    require("lunarvim.projects").add(path)
-    refresh()
-  else
+  if not ssh_host then
     path = vim.fn.fnamemodify(path, ":p"):gsub("/+$", "")
     if vim.fn.isdirectory(path) == 0 then
       vim.notify("Not a directory: " .. path, vim.log.levels.WARN)
       return
     end
-    require("lunarvim.projects").add(path)
-    refresh()
   end
+  require("lunarvim.projects").add(path)
+  -- refresh() is a no-op when the sidebar is closed (e.g. added from the
+  -- dashboard), so notify too — that's the only feedback in that case.
+  vim.notify("Added project: " .. path, vim.log.levels.INFO)
+  refresh()
 end
 
 local function add_project_ssh_input(default)
@@ -475,8 +475,10 @@ end
 -- list to actual project roots (rather than every nested folder) is what makes
 -- the finder feel focused instead of a wall of noise.
 local PROJECT_MARKERS = {
-  ".git", "package.json", "Cargo.toml", "go.mod",
-  "pyproject.toml", "Makefile", ".project",
+  ".git", ".svn", ".hg",
+  "package.json", "Cargo.toml", "go.mod", "pyproject.toml",
+  "composer.json", "pom.xml", "build.gradle", "flake.nix",
+  "CMakeLists.txt", "Makefile", ".project",
 }
 
 -- Scans `root` for project roots — directories containing one of PROJECT_MARKERS.
@@ -561,6 +563,22 @@ function M.action_add_project()
   local conf         = require("telescope.config").values
   local actions      = require("telescope.actions")
   local action_state = require("telescope.actions.state")
+  local previewers   = require("telescope.previewers")
+
+  -- Preview a short tree of the highlighted root so you can confirm it's the
+  -- folder you want before adding. Prefers `eza`, then `tree`, then plain `ls`.
+  local dir_previewer = previewers.new_termopen_previewer({
+    get_command = function(entry)
+      local p = entry.path
+      if vim.fn.executable("eza") == 1 then
+        return { "eza", "--tree", "--level=2", "--color=always",
+                 "--group-directories-first", p }
+      elseif vim.fn.executable("tree") == 1 then
+        return { "tree", "-L", "2", "-C", p }
+      end
+      return { "ls", "-lAh", p }
+    end,
+  })
 
   pickers.new({}, {
     prompt_title = "Add Project  (<C-e> for manual / SSH path)",
@@ -572,6 +590,7 @@ function M.action_add_project()
       end,
     }),
     sorter = conf.generic_sorter({}),
+    previewer = dir_previewer,
     attach_mappings = function(prompt_bufnr, map)
       -- Enter: add selected directory
       actions.select_default:replace(function()
