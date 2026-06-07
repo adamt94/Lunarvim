@@ -446,18 +446,18 @@ end
 local function add_project_path(path)
   path = path:gsub("/+$", "")
   local ssh_host = parse_ssh(path)
-  if ssh_host then
-    require("lunarvim.projects").add(path)
-    refresh()
-  else
+  if not ssh_host then
     path = vim.fn.fnamemodify(path, ":p"):gsub("/+$", "")
     if vim.fn.isdirectory(path) == 0 then
       vim.notify("Not a directory: " .. path, vim.log.levels.WARN)
       return
     end
-    require("lunarvim.projects").add(path)
-    refresh()
   end
+  require("lunarvim.projects").add(path)
+  -- refresh() is a no-op when the sidebar is closed (e.g. added from the
+  -- dashboard), so notify too — that's the only feedback in that case.
+  vim.notify("Added project: " .. path, vim.log.levels.INFO)
+  refresh()
 end
 
 local function add_project_ssh_input(default)
@@ -469,6 +469,62 @@ local function add_project_ssh_input(default)
     if not path or path == "" then return end
     add_project_path(path)
   end)
+end
+
+-- Markers that identify a directory as a "project root". Keeping the candidate
+-- list to actual project roots (rather than every nested folder) is what makes
+-- the finder feel focused instead of a wall of noise.
+local PROJECT_MARKERS = {
+  ".git", ".svn", ".hg",
+  "package.json", "Cargo.toml", "go.mod", "pyproject.toml",
+  "composer.json", "pom.xml", "build.gradle", "flake.nix",
+  "CMakeLists.txt", "Makefile", ".project",
+}
+
+-- Scans `root` for project roots — directories containing one of PROJECT_MARKERS.
+-- Returns a deduped, sorted list of absolute directory paths. Prefers `fd`
+-- (fast, honours its own pruning) and falls back to `find` with node_modules /
+-- .cache pruned so big trees stay snappy.
+local function scan_project_roots(root)
+  local lines
+  if vim.fn.executable("fd") == 1 then
+    local parts = {}
+    for _, m in ipairs(PROJECT_MARKERS) do
+      parts[#parts + 1] = m:gsub("%.", "\\.")
+    end
+    local pattern = "^(" .. table.concat(parts, "|") .. ")$"
+    lines = vim.fn.systemlist({
+      "fd", "--hidden", "--no-ignore", "--absolute-path",
+      "--max-depth", "6", pattern, root,
+    })
+  else
+    local cmd = {
+      "find", root, "-maxdepth", "6",
+      "(", "-name", "node_modules", "-o", "-name", ".cache", ")", "-prune",
+      "-o", "(",
+    }
+    for i, m in ipairs(PROJECT_MARKERS) do
+      if i > 1 then cmd[#cmd + 1] = "-o" end
+      cmd[#cmd + 1] = "-name"
+      cmd[#cmd + 1] = m
+    end
+    cmd[#cmd + 1] = ")"
+    cmd[#cmd + 1] = "-print"
+    lines = vim.fn.systemlist(cmd)
+  end
+
+  local seen, roots = {}, {}
+  for _, line in ipairs(lines or {}) do
+    if line ~= "" then
+      local dir = vim.fn.fnamemodify(line, ":h"):gsub("/+$", "")
+      if dir ~= "" and not seen[dir] then
+        seen[dir] = true
+        roots[#roots + 1] = dir
+      end
+    end
+  end
+  table.sort(roots)
+  return roots
 end
 
 function M.action_add_project()
@@ -487,32 +543,63 @@ function M.action_add_project()
     search_root = vim.fn.expand("~")
   end
 
+  local roots = scan_project_roots(search_root)
+  if vim.tbl_isempty(roots) then
+    vim.notify(
+      "No project roots found under " .. search_root .. " — enter a path manually.",
+      vim.log.levels.INFO
+    )
+    add_project_ssh_input()
+    return
+  end
+
+  local home = vim.fn.expand("~")
+  local function shorten(p)
+    return (p:gsub("^" .. vim.pesc(home), "~"))
+  end
+
   local pickers      = require("telescope.pickers")
   local finders      = require("telescope.finders")
   local conf         = require("telescope.config").values
   local actions      = require("telescope.actions")
   local action_state = require("telescope.actions.state")
+  local previewers   = require("telescope.previewers")
+
+  -- Preview a short tree of the highlighted root so you can confirm it's the
+  -- folder you want before adding. Prefers `eza`, then `tree`, then plain `ls`.
+  local dir_previewer = previewers.new_termopen_previewer({
+    get_command = function(entry)
+      local p = entry.path
+      if vim.fn.executable("eza") == 1 then
+        return { "eza", "--tree", "--level=2", "--color=always",
+                 "--group-directories-first", p }
+      elseif vim.fn.executable("tree") == 1 then
+        return { "tree", "-L", "2", "-C", p }
+      end
+      return { "ls", "-lAh", p }
+    end,
+  })
 
   pickers.new({}, {
-    prompt_title = "Add Project  (<C-e> for SSH path)",
-    finder = finders.new_oneshot_job({
-      "find", search_root,
-      "-maxdepth", "5",
-      "-type", "d",
-      "-not", "-path", "*/\\.git*",
-      "-not", "-path", "*/node_modules/*",
-      "-not", "-path", "*/\\.cache/*",
-    }, {}),
+    prompt_title = "Add Project  (<C-e> for manual / SSH path)",
+    finder = finders.new_table({
+      results = roots,
+      entry_maker = function(path)
+        local display = shorten(path)
+        return { value = path, ordinal = display, display = display, path = path }
+      end,
+    }),
     sorter = conf.generic_sorter({}),
+    previewer = dir_previewer,
     attach_mappings = function(prompt_bufnr, map)
       -- Enter: add selected directory
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry()
         actions.close(prompt_bufnr)
         if not entry then return end
-        add_project_path(entry[1])
+        add_project_path(entry.value)
       end)
-      -- <C-e>: fall back to manual SSH input
+      -- <C-e>: fall back to manual / SSH input
       map({ "i", "n" }, "<C-e>", function()
         actions.close(prompt_bufnr)
         add_project_ssh_input()

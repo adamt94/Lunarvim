@@ -52,6 +52,8 @@ function M.setup()
       function() threads.launch_now("terminal") end),
     dashboard.button("r", "   Resume         pick a thread",
       function() threads.pick() end),
+    dashboard.button("a", "   Add Project    find a project root",
+      function() require("lunarvim.ui.sidebar").action_add_project() end),
     dashboard.button("q", "   Quit",
       "<cmd>qa<cr>"),
   }
